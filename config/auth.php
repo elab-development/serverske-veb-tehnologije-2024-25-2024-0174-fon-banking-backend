@@ -114,4 +114,9 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'pin_login' => [
+        'max_attempts' => env('PIN_LOGIN_MAX_ATTEMPTS', 5),
+        'decay_seconds' => env('PIN_LOGIN_DECAY_SECONDS', 900),
+    ],
+
 ];

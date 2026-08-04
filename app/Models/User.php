@@ -13,6 +13,15 @@ class User extends Authenticatable implements PasskeyUser
 {
     use HasApiTokens, HasFactory, Notifiable, PasskeyAuthenticatable;
 
+    protected static function booted(): void
+    {
+        static::updated(function (User $user): void {
+            if ($user->wasChanged('status') && $user->status === 'blocked') {
+                $user->tokens()->delete();
+            }
+        });
+    }
+
     protected $fillable = [
         'first_name',
         'last_name',
@@ -30,7 +39,7 @@ class User extends Authenticatable implements PasskeyUser
     protected function casts(): array
     {
         return [
-            'pin_hash' => 'hashed', 
+            'pin_hash' => 'hashed',
         ];
     }
 

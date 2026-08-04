@@ -48,67 +48,15 @@ services:
     volumes:
       - backend-data:/data
     networks:
-      - proxy
-    restart: unless-stopped
-
-  nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:2.13.5
-    environment:
-      DISABLE_IPV6: "true"
-    depends_on:
-      backend:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "127.0.0.1:81:81"
-      - "443:443"
-    volumes:
-      - npm-data:/data
-      - npm-letsencrypt:/etc/letsencrypt
-    networks:
-      - proxy
-    restart: unless-stopped
-
-  duckdns-check:
-    image: lscr.io/linuxserver/duckdns:latest
-    env_file:
-      - path: .env.docker
-        required: false
-    entrypoint:
-      - /bin/sh
-      - -eu
-      - -c
-    command:
-      - test -n "$${DUCKDNS_TOKEN}"
-    restart: "no"
-
-  duckdns:
-    image: lscr.io/linuxserver/duckdns:latest
-    env_file:
-      - path: .env.docker
-        required: false
-    entrypoint:
-      - /bin/sh
-      - -eu
-      - -c
-    command:
-      - export TOKEN="$${DUCKDNS_TOKEN}"; exec /init
-    environment:
-      PUID: "1000"
-      PGID: "1000"
-      SUBDOMAINS: fon-banking
-      UPDATE_IP: ipv4
-      LOG_FILE: "false"
-    depends_on:
-      duckdns-check:
-        condition: service_completed_successfully
+      proxy:
+        aliases:
+          - fon-banking-backend
     restart: unless-stopped
 
 volumes:
   backend-data:
-  npm-data:
-  npm-letsencrypt:
 
 networks:
   proxy:
-    name: fon-banking-proxy
+    external: true
+    name: dev-proxy
