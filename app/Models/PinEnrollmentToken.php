@@ -2,25 +2,28 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class ActivationCode extends Model
+class PinEnrollmentToken extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'user_id',
-        'code',
+        'device_id',
+        'token_hash',
+        'purpose',
         'expires_at',
-        'used_at',
+        'consumed_at',
+    ];
+
+    protected $hidden = [
+        'token_hash',
     ];
 
     protected function casts(): array
     {
         return [
             'expires_at' => 'datetime',
-            'used_at' => 'datetime',
+            'consumed_at' => 'datetime',
         ];
     }
 
@@ -29,8 +32,8 @@ class ActivationCode extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function isValid(): bool
+    public function device()
     {
-        return is_null($this->used_at) && $this->expires_at->isFuture();
+        return $this->belongsTo(Device::class);
     }
 }

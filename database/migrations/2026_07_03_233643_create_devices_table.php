@@ -11,8 +11,8 @@ return new class extends Migration
         Schema::create('devices', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->string('device_identifier')->unique(); 
-            $table->string('device_name')->nullable(); 
+            $table->string('device_identifier')->unique();
+            $table->string('device_name')->nullable();
             $table->boolean('is_trusted')->default(false);
             $table->timestamp('last_login_at')->nullable();
             $table->timestamps();

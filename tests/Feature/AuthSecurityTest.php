@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Device;
 use App\Models\User;
+use App\Services\PinConfirmationGrant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -124,6 +125,62 @@ class AuthSecurityTest extends TestCase
         $this->withToken($token)
             ->postJson('/api/v1/auth/confirm-pin', ['pin' => '9999'])
             ->assertTooManyRequests();
+    }
+
+    public function test_pin_confirmation_issues_a_single_use_token_bound_grant(): void
+    {
+        $user = $this->createUser();
+        $token = $user->createToken('test-device');
+
+        $response = $this->withToken($token->plainTextToken)
+            ->postJson('/api/v1/auth/confirm-pin', ['pin' => '1234'])
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('expires_in', 300);
+
+        $confirmationToken = $response->json('confirmation_token');
+        $grant = app(PinConfirmationGrant::class);
+
+        $this->assertIsString($confirmationToken);
+        $this->assertTrue($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'passkeys.manage'));
+        $this->assertFalse($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'passkeys.manage'));
+    }
+
+    public function test_pin_confirmation_grant_cannot_be_redeemed_by_another_bearer_token(): void
+    {
+        $user = $this->createUser();
+        $issuingToken = $user->createToken('issuing-device');
+        $otherToken = $user->createToken('other-device');
+
+        $confirmationToken = $this->withToken($issuingToken->plainTextToken)
+            ->postJson('/api/v1/auth/confirm-pin', ['pin' => '1234'])
+            ->assertOk()
+            ->json('confirmation_token');
+
+        $grant = app(PinConfirmationGrant::class);
+
+        $this->assertFalse($grant->consume($confirmationToken, $user->id, $otherToken->accessToken->id, 'passkeys.manage'));
+        $this->assertTrue($grant->consume($confirmationToken, $user->id, $issuingToken->accessToken->id, 'passkeys.manage'));
+    }
+
+    public function test_pin_confirmation_grant_expires_after_five_minutes(): void
+    {
+        $user = $this->createUser();
+        $token = $user->createToken('test-device');
+
+        $confirmationToken = $this->withToken($token->plainTextToken)
+            ->postJson('/api/v1/auth/confirm-pin', ['pin' => '1234'])
+            ->assertOk()
+            ->json('confirmation_token');
+
+        $this->travel(301)->seconds();
+
+        $this->assertFalse(app(PinConfirmationGrant::class)->consume(
+            $confirmationToken,
+            $user->id,
+            $token->accessToken->id,
+            'passkeys.manage',
+        ));
     }
 
     private function createUser(string $status = 'active'): User

@@ -17,7 +17,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        Passkeys::ignoreRoutes();
+        Passkeys::useUserModel(User::class);
+        Passkeys::usePasskeyModel(Passkey::class);
     }
 
     /**
@@ -26,10 +28,6 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureRateLimiting();
-
-        Passkeys::ignoreRoutes();
-        Passkeys::useUserModel(User::class);
-        Passkeys::usePasskeyModel(Passkey::class);
     }
 
     private function configureRateLimiting(): void
@@ -39,7 +37,7 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('pin-setup', fn (Request $request): array => [
             Limit::perMinute(5)->by('pin-setup-ip:'.$request->ip()),
-            Limit::perMinute(5)->by('pin-setup-device:'.$this->deviceKey($request)),
+            Limit::perMinute(5)->by('pin-setup-token:'.hash('sha256', (string) $request->input('enrollment_token'))),
         ]);
 
         RateLimiter::for('pin-login', fn (Request $request): array => [

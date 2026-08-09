@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
+    'relying_party_id' => env('PASSKEYS_RELYING_PARTY_ID', parse_url(config('app.url'), PHP_URL_HOST)),
 
     /*
     |--------------------------------------------------------------------------
@@ -26,9 +26,10 @@ return [
     |
     */
 
-    'allowed_origins' => [
-        config('app.url'),
-    ],
+    'allowed_origins' => array_values(array_filter(array_map(
+        fn (string $origin): string => trim($origin),
+        explode(',', env('PASSKEYS_ALLOWED_ORIGINS', config('app.url'))),
+    ))),
 
     /*
     |--------------------------------------------------------------------------
@@ -40,7 +41,7 @@ return [
     |
     */
 
-    'user_handle_secret' => env('PASSKEYS_USER_HANDLE_SECRET', config('app.key')),
+    'user_handle_secret' => env('PASSKEYS_USER_HANDLE_SECRET'),
 
     /*
     |--------------------------------------------------------------------------
@@ -52,7 +53,19 @@ return [
     |
     */
 
-    'timeout' => 60000,
+    'timeout' => (int) env('PASSKEYS_TIMEOUT', 60000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ceremony TTL
+    |--------------------------------------------------------------------------
+    |
+    | The application ceremony store uses this value to expire WebAuthn
+    | challenges. It is deliberately short to limit replay opportunities.
+    |
+    */
+
+    'ceremony_ttl' => (int) env('PASSKEYS_CEREMONY_TTL', 120),
 
     /*
     |--------------------------------------------------------------------------

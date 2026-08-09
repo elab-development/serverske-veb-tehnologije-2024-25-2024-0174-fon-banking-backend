@@ -18,6 +18,10 @@ class User extends Authenticatable implements PasskeyUser
         static::updated(function (User $user): void {
             if ($user->wasChanged('status') && $user->status === 'blocked') {
                 $user->tokens()->delete();
+                PinEnrollmentToken::query()
+                    ->where('user_id', $user->getKey())
+                    ->whereNull('consumed_at')
+                    ->update(['consumed_at' => now()]);
             }
         });
     }
@@ -46,6 +50,11 @@ class User extends Authenticatable implements PasskeyUser
     public function devices()
     {
         return $this->hasMany(Device::class);
+    }
+
+    public function getPasskeyDisplayName(): string
+    {
+        return trim($this->first_name.' '.$this->last_name);
     }
 
     public function accounts()

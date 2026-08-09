@@ -4,10 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivationCode;
 use App\Models\Device;
+use App\Models\PinEnrollmentToken;
+use App\Services\DeviceTokenIssuer;
+use App\Services\PinConfirmationGrant;
 use App\Services\PinLoginLockout;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -43,65 +50,117 @@ class AuthController extends Controller
             ], 422);
         }
 
-        $user = $matchedCode->user;
+        $result = DB::transaction(function () use ($matchedCode, $request): array {
+            $activationCode = ActivationCode::query()->lockForUpdate()->findOrFail($matchedCode->id);
 
-        $matchedCode->used_at = now();
-        $matchedCode->save();
+            if (! $activationCode->isValid()) {
+                throw ValidationException::withMessages([
+                    'code' => ['Aktivacioni kod je nevalidan ili istekao.'],
+                ]);
+            }
 
-        $device = Device::updateOrCreate(
-            ['device_identifier' => $request->device_identifier],
-            [
+            $user = $activationCode->user()->lockForUpdate()->firstOrFail();
+
+            if (in_array($user->status, ['blocked', 'system'], true) || $user->pin_hash !== null) {
+                throw ValidationException::withMessages([
+                    'code' => ['Aktivacioni kod je nevalidan ili istekao.'],
+                ]);
+            }
+
+            $device = Device::query()->where('device_identifier', $request->device_identifier)->lockForUpdate()->first();
+
+            if ($device !== null && $device->user_id !== $user->id) {
+                throw ValidationException::withMessages([
+                    'device_identifier' => ['Uređaj nije dostupan za aktivaciju.'],
+                ]);
+            }
+
+            $device ??= new Device([
                 'user_id' => $user->id,
-                'device_name' => $request->device_name ?? 'Nepoznat uređaj',
                 'device_identifier' => $request->device_identifier,
+            ]);
+            $device->fill([
+                'device_name' => $request->device_name,
                 'is_trusted' => true,
                 'last_login_at' => now(),
-            ]
-        );
+            ])->save();
 
-        if (is_null($user->pin_hash)) {
-            $user->status = 'pending_pin';
-            $user->save();
-        }
+            $activationCode->update(['used_at' => now()]);
+            $user->update(['status' => 'pending_pin']);
+
+            PinEnrollmentToken::query()
+                ->where('user_id', $user->id)
+                ->where('device_id', $device->id)
+                ->whereNull('consumed_at')
+                ->update(['consumed_at' => now()]);
+
+            $plainToken = bin2hex(random_bytes(32));
+            $expiresIn = (int) config('auth.pin_enrollment.ttl', 600);
+
+            PinEnrollmentToken::create([
+                'user_id' => $user->id,
+                'device_id' => $device->id,
+                'token_hash' => hash('sha256', $plainToken),
+                'purpose' => 'pin.enroll',
+                'expires_at' => now()->addSeconds($expiresIn),
+            ]);
+
+            return [$user, $plainToken, $expiresIn];
+        });
+
+        [$user, $enrollmentToken, $expiresIn] = $result;
 
         return response()->json([
             'message' => 'Kod je uspešno verifikovan. Uredjaj registrovan',
-            // 'user_id' => $user->id,
             'user_status' => $user->status,
+            'enrollment_token' => $enrollmentToken,
+            'expires_in' => $expiresIn,
         ]);
     }
 
-    public function setupPin(Request $request)
+    public function setupPin(Request $request, DeviceTokenIssuer $tokens): JsonResponse
     {
-        $request->validate([
-            'device_identifier' => 'required|string',
+        $validated = $request->validate([
+            'enrollment_token' => ['required', 'string', 'size:64'],
             'pin' => 'required|digits:4',
         ]);
 
-        $device = Device::where('device_identifier', $request->device_identifier)->first();
+        try {
+            $token = DB::transaction(function () use ($validated, $tokens): string {
+                $enrollment = PinEnrollmentToken::query()
+                    ->where('token_hash', hash('sha256', $validated['enrollment_token']))
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-        if (! $device || ! $device->is_trusted) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Uređaj nije pronađen ili je blokiran.',
-            ], 403);
+                if ($enrollment->consumed_at !== null
+                    || $enrollment->expires_at->isPast()
+                    || $enrollment->purpose !== 'pin.enroll') {
+                    throw new ModelNotFoundException;
+                }
+
+                $user = $enrollment->user()->lockForUpdate()->firstOrFail();
+                $device = $enrollment->device()->lockForUpdate()->firstOrFail();
+
+                if ($device->user_id !== $user->id
+                    || ! $device->is_trusted
+                    || $user->status !== 'pending_pin'
+                    || $user->pin_hash !== null) {
+                    throw new ModelNotFoundException;
+                }
+
+                $enrollment->update(['consumed_at' => now()]);
+                $user->update([
+                    'pin_hash' => $validated['pin'],
+                    'status' => 'active',
+                ]);
+
+                return $tokens->issue($device)->plainTextToken;
+            });
+        } catch (ModelNotFoundException) {
+            throw ValidationException::withMessages([
+                'enrollment_token' => ['Enrollment token je nevalidan ili istekao.'],
+            ]);
         }
-
-        $user = $device->user;
-
-        if (! is_null($user->pin_hash)) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'PIN je već postavljen za ovaj nalog.',
-            ], 400);
-        }
-
-        $user->update([
-            'pin_hash' => Hash::make($request->pin),
-            'status' => 'active',
-        ]);
-
-        $token = $user->createToken($device->device_identifier)->plainTextToken;
 
         return response()->json([
             'status' => 'success',
@@ -115,7 +174,7 @@ class AuthController extends Controller
         ], 200);
     }
 
-    public function login(Request $request, PinLoginLockout $lockout)
+    public function login(Request $request, PinLoginLockout $lockout, DeviceTokenIssuer $tokens)
     {
         $request->validate([
             'device_identifier' => 'required|string',
@@ -176,7 +235,7 @@ class AuthController extends Controller
 
         $device->update(['last_login_at' => now()]);
 
-        $token = $user->createToken($device->device_identifier)->plainTextToken;
+        $token = $tokens->issue($device)->plainTextToken;
 
         return response()->json([
             'status' => 'success',
@@ -199,7 +258,7 @@ class AuthController extends Controller
         ], Response::HTTP_TOO_MANY_REQUESTS);
     }
 
-    public function confirmPin(Request $request)
+    public function confirmPin(Request $request, PinConfirmationGrant $grants): JsonResponse
     {
         $validated = $request->validate([
             'pin' => 'required|digits:4',
@@ -212,9 +271,23 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $accessToken = $request->user()->currentAccessToken();
+
+        if (! $accessToken instanceof PersonalAccessToken) {
+            abort(Response::HTTP_UNAUTHORIZED);
+        }
+
+        $grant = $grants->issue(
+            $request->user()->getKey(),
+            $accessToken->getKey(),
+            'passkeys.manage',
+        );
+
         return response()->json([
             'status' => 'success',
             'message' => 'Identitet je potvrđen.',
+            'confirmation_token' => $grant['token'],
+            'expires_in' => $grant['expires_in'],
         ]);
     }
 

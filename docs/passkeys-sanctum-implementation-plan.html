@@ -275,7 +275,7 @@
         <h1>Laravel Passkeys sa Sanctum bearer autentifikacijom</h1>
         <p>Zadržavamo bezbednu WebAuthn implementaciju paketa, uklanjamo njegov session sloj i uvodimo API tok koji odgovara postojećoj aktivaciji uređaja, PIN-u i Sanctum tokenima.</p>
         <div class="chips">
-          <span class="chip">Korak 1 završen</span>
+          <span class="chip">Backend koraci 1-17 završeni</span>
           <span class="chip">Laravel 13</span>
           <span class="chip">laravel/passkeys 0.2.1</span>
           <span class="chip">Sanctum bearer tokens</span>
@@ -285,7 +285,7 @@
 
       <section id="architecture">
         <h2>Ciljna arhitektura</h2>
-        <div class="callout"><strong>Status implementacije</strong>Prvi korak je završen: active-user middleware, imenovani rate limiteri i petnaestominutni PIN lockout posle pet neuspešnih pokušaja. Bezbedan activation/PIN enrollment token je sledeći korak.</div>
+        <div class="callout"><strong>Status implementacije</strong>Backend passkey i Sanctum tok je završen: bezbedan PIN enrollment, stateless WebAuthn ceremonije, login, registracija, upravljanje credentialima, token politika i kriptografski integration test.</div>
         <div class="summary-grid">
           <div class="card good">
             <h3>Zadržavamo</h3>
@@ -330,9 +330,9 @@
       </section>
 
       <section id="security">
-        <h2>1. Bezbednosni preduslovi</h2>
+        <h2>1. Bezbednosni preduslovi <small>(završeno)</small></h2>
         <div class="callout danger"><strong>Ne puštati passkey login pre ovih izmena.</strong> Slabiji PIN fallback i dalje može poništiti bezbednosnu korist passkeya.</div>
-        <h3>Rate limiting i lockout</h3>
+        <h3>Rate limiting i lockout <small>(završeno)</small></h3>
         <div class="table-wrap"><table>
           <thead><tr><th>Operacija</th><th>Početni limit</th><th>Ključ</th></tr></thead>
           <tbody>
@@ -346,17 +346,17 @@
           </tbody>
         </table></div>
         <p>Dodati i privremeni PIN lockout posle više grešaka. Četvorocifreni PIN ima samo 10.000 kombinacija.</p>
-        <h3>Status korisnika</h3>
+        <h3>Status korisnika <small>(završeno)</small></h3>
         <p>Napraviti <code>EnsureUserIsActive</code> middleware i zahtevati <code>status === 'active'</code> na PIN loginu, passkey rutama i bankarskim rutama. Kada korisnik postane blokiran, izvršiti:</p>
         <pre><code>$user-&gt;tokens()-&gt;delete();</code></pre>
-        <h3>Prvi PIN</h3>
+        <h3>Prvi PIN <small>(završeno)</small></h3>
         <p>Aktivacija treba da izda jednokratni server-side enrollment token vezan za korisnika i uređaj. <code>POST /set_pin</code> mora trošiti taj token, umesto da veruje samo <code>device_identifier</code> vrednosti.</p>
       </section>
 
       <section id="disable-routes">
-        <h2>2. Isključivanje paketovih ruta</h2>
-        <p>U <code>AppServiceProvider::boot()</code>, pre model konfiguracije:</p>
-        <pre><code>public function boot(): void
+        <h2>2. Isključivanje paketovih ruta <small>(završeno)</small></h2>
+        <p>U <code>AppServiceProvider::register()</code>, pre nego što Laravel bootuje paketov provider:</p>
+        <pre><code>public function register(): void
 {
     Passkeys::ignoreRoutes();
 
@@ -369,7 +369,7 @@
       </section>
 
       <section id="configuration">
-        <h2>3. Konfiguracija</h2>
+        <h2>3. Konfiguracija <small>(završeno)</small></h2>
         <pre><code>PASSKEYS_RELYING_PARTY_ID=fon-banking.duckdns.org
 PASSKEYS_ALLOWED_ORIGINS=https://fon-banking.duckdns.org
 PASSKEYS_USER_HANDLE_SECRET=&lt;stabilan-slucajan-secret&gt;
@@ -383,7 +383,7 @@ PASSKEYS_CEREMONY_TTL=120</code></pre>
       </section>
 
       <section id="user-model">
-        <h2>4. User model</h2>
+        <h2>4. User model <small>(završeno)</small></h2>
         <p>Zadržati <code>PasskeyUser</code> i <code>PasskeyAuthenticatable</code>. Dodati čitljivo ime za sistemski credential picker:</p>
         <pre><code>public function getPasskeyDisplayName(): string
 {
@@ -393,7 +393,7 @@ PASSKEYS_CEREMONY_TTL=120</code></pre>
       </section>
 
       <section id="ceremonies">
-        <h2>5. Server-side ceremony store</h2>
+        <h2>5. Server-side ceremony store <small>(završeno)</small></h2>
         <p>Napraviti <code>app/Services/PasskeyCeremonyStore.php</code>. Klijent dobija samo slučajni <code>ceremony_id</code>, dok serialized options ostaju na serveru.</p>
         <div class="endpoint-grid">
           <div class="card"><h3>Login payload</h3><pre><code>{
@@ -422,7 +422,7 @@ PASSKEYS_CEREMONY_TTL=120</code></pre>
       </section>
 
       <section id="confirmation">
-        <h2>6. PIN potvrda za management</h2>
+        <h2>6. PIN potvrda za management <small>(završeno)</small></h2>
         <p><code>POST /api/v1/auth/confirm-pin</code> posle uspeha vraća jednokratni grant:</p>
         <pre><code>{
   "status": "success",
@@ -433,7 +433,7 @@ PASSKEYS_CEREMONY_TTL=120</code></pre>
       </section>
 
       <section id="routes">
-        <h2>7. Nove API rute</h2>
+        <h2>7. Nove API rute <small>(završeno)</small></h2>
         <div class="endpoint-grid">
           <div class="card good"><h3>Javne</h3><pre><code>POST /api/v1/auth/passkeys/login/options
 POST /api/v1/auth/passkeys/login</code></pre></div>
@@ -447,7 +447,7 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="login-options">
-        <h2>8. Login options</h2>
+        <h2>8. Login options <small>(završeno)</small></h2>
         <pre><code>POST /api/v1/auth/passkeys/login/options
 
 {
@@ -465,7 +465,7 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="login-verify">
-        <h2>9. Login verification</h2>
+        <h2>9. Login verification <small>(završeno)</small></h2>
         <pre><code>POST /api/v1/auth/passkeys/login
 
 {
@@ -491,7 +491,7 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="registration-options">
-        <h2>10. Registration options</h2>
+        <h2>10. Registration options <small>(završeno)</small></h2>
         <pre><code>POST /api/v1/passkeys/registration/options
 
 { "confirmation_token": "..." }</code></pre>
@@ -506,7 +506,7 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="registration-store">
-        <h2>11. Završetak registracije</h2>
+        <h2>11. Završetak registracije <small>(završeno)</small></h2>
         <pre><code>POST /api/v1/passkeys
 
 {
@@ -529,14 +529,14 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="list">
-        <h2>12. Lista passkeyeva</h2>
+        <h2>12. Lista passkeyeva <small>(završeno)</small></h2>
         <p><code>GET /api/v1/passkeys</code> uvek čita <code>$request-&gt;user()-&gt;passkeys()</code>. Vraća samo:</p>
         <ul><li><code>id</code></li><li><code>name</code></li><li><code>last_used_at</code></li><li><code>created_at</code></li></ul>
         <p>Klijent nikada ne šalje <code>user_id</code>, a credential JSON se ne izlaže.</p>
       </section>
 
       <section id="delete">
-        <h2>13. Brisanje passkeya</h2>
+        <h2>13. Brisanje passkeya <small>(završeno)</small></h2>
         <pre><code>DELETE /api/v1/passkeys/{passkey}
 
 { "confirmation_token": "..." }</code></pre>
@@ -551,7 +551,7 @@ DELETE /api/v1/passkeys/{passkey}</code></pre></div>
       </section>
 
       <section id="requests">
-        <h2>14. Form Request klase</h2>
+        <h2>14. Form Request klase <small>(završeno)</small></h2>
         <pre><code>PasskeyLoginOptionsRequest
 PasskeyLoginRequest
 PasskeyRegistrationOptionsRequest
@@ -561,14 +561,14 @@ DeletePasskeyRequest</code></pre>
       </section>
 
       <section id="tokens">
-        <h2>15. Sanctum token politika</h2>
+        <h2>15. Sanctum token politika <small>(završeno)</small></h2>
         <p>Minimalno kompatibilno izdavanje:</p>
         <pre><code>$user-&gt;createToken($device-&gt;device_identifier)-&gt;plainTextToken;</code></pre>
         <p>Preporučeno je obrisati prethodni token istog uređaja, koristiti čitljivo ime uređaja i uvesti expiration. Ako se politika menja, zajedničku logiku izdvojiti u <code>DeviceTokenIssuer</code> koji koriste PIN i passkey login.</p>
       </section>
 
       <section id="errors">
-        <h2>16. Obrada grešaka</h2>
+        <h2>16. Obrada grešaka <small>(završeno)</small></h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Situacija</th><th>Status</th></tr></thead>
           <tbody>
@@ -586,7 +586,7 @@ DeletePasskeyRequest</code></pre>
       </section>
 
       <section id="tests">
-        <h2>17. Testovi</h2>
+        <h2>17. Testovi <small>(završeno)</small></h2>
         <p>Dodati:</p>
         <pre><code>tests/Unit/PasskeyCeremonyStoreTest.php
 tests/Feature/PasskeyAuthenticationTest.php
@@ -604,17 +604,17 @@ tests/Feature/PasskeyManagementTest.php</code></pre>
         <h2>18. Redosled implementacije</h2>
         <ol class="steps">
           <li><strong>Završeno:</strong> active-user middleware, rate limiteri i PIN lockout.</li>
-          <li>Bezbedan activation/PIN enrollment token.</li>
-          <li><code>Passkeys::ignoreRoutes()</code> i route provera.</li>
-          <li>RP ID, origins, user handle secret i TTL konfiguracija.</li>
-          <li><code>PasskeyCeremonyStore</code> i njegovi unit testovi.</li>
-          <li>PIN confirmation management grant.</li>
-          <li>Passkey login options endpoint.</li>
-          <li>Passkey verification i Sanctum token issuance.</li>
-          <li>Registration options i završetak registracije.</li>
-          <li>Listanje i brisanje passkeyeva.</li>
-          <li>Feature, security i regression testovi.</li>
-          <li>Pint, test suite, audit i tek zatim Expo povezivanje.</li>
+          <li><strong>Završeno:</strong> bezbedan activation/PIN enrollment token.</li>
+          <li><strong>Završeno:</strong> <code>Passkeys::ignoreRoutes()</code> i route provera.</li>
+          <li><strong>Završeno:</strong> RP ID, origins, user handle secret i TTL konfiguracija.</li>
+          <li><strong>Završeno:</strong> <code>PasskeyCeremonyStore</code> i njegovi unit testovi.</li>
+          <li><strong>Završeno:</strong> PIN confirmation management grant.</li>
+          <li><strong>Završeno:</strong> Passkey login options endpoint.</li>
+          <li><strong>Završeno:</strong> Passkey verification i Sanctum token issuance.</li>
+          <li><strong>Završeno:</strong> Registration options i završetak registracije.</li>
+          <li><strong>Završeno:</strong> listanje i brisanje passkeyeva.</li>
+          <li><strong>Završeno:</strong> feature, security, regression i stvarni WebAuthn testovi.</li>
+          <li><strong>Backend završen:</strong> Pint, test suite i audit; sledeće je Expo povezivanje.</li>
         </ol>
       </section>
 

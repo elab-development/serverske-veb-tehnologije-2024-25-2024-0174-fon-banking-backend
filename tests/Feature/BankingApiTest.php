@@ -90,7 +90,7 @@ class BankingApiTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(1)
             ->assertJsonPath('0.accountId', 'acc-1001')
-            ->assertJsonPath('0.balance', 45000.5);
+            ->assertJsonPath('0.balance', 0);
     }
 
     public function test_cards_endpoint_returns_cards_for_account(): void
@@ -132,6 +132,7 @@ class BankingApiTest extends TestCase
     public function test_transfer_endpoint_creates_transaction_and_checks_balance(): void
     {
         $user = User::factory()->create();
+        $otherUser = User::factory()->create();
         Account::create([
             'id' => 'acc-test-4',
             'user_id' => $user->id,
@@ -141,6 +142,26 @@ class BankingApiTest extends TestCase
             'balance' => 45000.50,
             'color' => 'magenta',
             'currency' => 'RSD',
+        ]);
+        Account::create([
+            'id' => 'acc-test-recipient',
+            'user_id' => $otherUser->id,
+            'title' => 'Račun primaoca',
+            'name' => 'Pera Peric',
+            'account_id' => '160-123456789-01',
+            'balance' => 0,
+            'color' => 'blue',
+            'currency' => 'RSD',
+        ]);
+        Transaction::create([
+            'id' => 'txn-funding-1',
+            'recipient_account' => 'acc-1001',
+            'recipient_name' => 'Test User',
+            'sender_account' => '160-123456789-01',
+            'amount' => 50000,
+            'currency' => 'RSD',
+            'transaction_time' => now(),
+            'status' => 'izvrsena',
         ]);
 
         $token = $user->createToken('test')->plainTextToken;
@@ -165,6 +186,7 @@ class BankingApiTest extends TestCase
     public function test_transactions_endpoint_returns_history_for_account(): void
     {
         $user = User::factory()->create();
+        $otherUser = User::factory()->create();
         Account::create([
             'id' => 'acc-test-5',
             'user_id' => $user->id,
@@ -173,6 +195,16 @@ class BankingApiTest extends TestCase
             'account_id' => 'acc-1001',
             'balance' => 45000.50,
             'color' => 'magenta',
+            'currency' => 'RSD',
+        ]);
+        Account::create([
+            'id' => 'acc-test-6',
+            'user_id' => $otherUser->id,
+            'title' => 'Račun primaoca',
+            'name' => 'Pera Peric',
+            'account_id' => '160-123456789-01',
+            'balance' => 0,
+            'color' => 'blue',
             'currency' => 'RSD',
         ]);
 
