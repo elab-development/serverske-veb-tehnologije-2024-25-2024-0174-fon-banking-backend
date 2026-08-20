@@ -19,6 +19,18 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    public function user(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return response()->json([
+            'firstName' => $user->first_name,
+            'lastName' => $user->last_name,
+            'email' => $user->email,
+            'phoneNumber' => $user->phone_number,
+        ]);
+    }
+
     public function activate(Request $request)
     {
         $request->validate([

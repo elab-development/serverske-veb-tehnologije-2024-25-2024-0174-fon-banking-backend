@@ -14,6 +14,28 @@ class BankingApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_authenticated_user_can_get_their_profile(): void
+    {
+        $user = User::factory()->create([
+            'first_name' => 'Marko',
+            'last_name' => 'Nenadović',
+            'phone_number' => '+381641111111',
+            'email' => 'marko@example.com',
+        ]);
+        $token = $user->createToken('test')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/user');
+
+        $response->assertOk()
+            ->assertExactJson([
+                'firstName' => 'Marko',
+                'lastName' => 'Nenadović',
+                'email' => 'marko@example.com',
+                'phoneNumber' => '+381641111111',
+            ]);
+    }
+
     public function test_authenticated_user_can_confirm_their_pin_without_creating_a_new_token(): void
     {
         $user = User::create([
@@ -180,7 +202,23 @@ class BankingApiTest extends TestCase
             ]);
 
         $response->assertCreated();
-        $this->assertDatabaseHas('transactions', ['sender_account' => 'acc-1001']);
+        $this->assertDatabaseHas('transactions', [
+            'sender_account' => 'acc-1001',
+            'status' => 'izvrsena',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->postJson('/api/v1/transactions/transfer', [
+                'senderAccount' => 'acc-1001',
+                'recipientAccount' => 'missing-account',
+                'recipientName' => 'Missing User',
+                'amount' => 100,
+                'currency' => 'RSD',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Recipient account does not exist.');
+
+        $this->assertDatabaseCount('transactions', 2);
     }
 
     public function test_transactions_endpoint_returns_history_for_account(): void
@@ -229,10 +267,54 @@ class BankingApiTest extends TestCase
         $token = $user->createToken('test')->plainTextToken;
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/v1/accounts/acc-1001/transactions');
+            ->getJson('/api/v1/accounts/acc-1001/transactions?per_page=10');
 
         $response->assertOk()
-            ->assertJsonCount(1)
-            ->assertJsonPath('0.senderAccount', 'acc-1001');
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.senderAccount', 'acc-1001')
+            ->assertJsonPath('current_page', 1)
+            ->assertJsonPath('total', 1);
+    }
+
+    public function test_transaction_history_is_paginated_without_duplicate_owned_account_transfers(): void
+    {
+        $user = User::factory()->create();
+        foreach (['acc-1001', 'acc-1002'] as $index => $accountId) {
+            Account::create([
+                'id' => 'acc-page-'.$index,
+                'user_id' => $user->id,
+                'title' => 'Account',
+                'name' => 'Test User',
+                'account_id' => $accountId,
+                'color' => 'blue',
+                'currency' => 'RSD',
+            ]);
+        }
+
+        for ($index = 1; $index <= 5; $index++) {
+            Transaction::create([
+                'id' => 'txn-page-'.$index,
+                'recipient_account' => 'acc-1002',
+                'recipient_name' => 'Test User',
+                'sender_account' => 'acc-1001',
+                'amount' => $index,
+                'currency' => 'RSD',
+                'transaction_time' => now()->subMinutes($index),
+                'status' => 'izvrsena',
+            ]);
+        }
+
+        $token = $user->createToken('test')->plainTextToken;
+        $response = $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions?page=2&per_page=2');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonPath('data.0.id', 'txn-page-3')
+            ->assertJsonPath('data.1.id', 'txn-page-4')
+            ->assertJsonPath('current_page', 2)
+            ->assertJsonPath('last_page', 3)
+            ->assertJsonPath('per_page', 2)
+            ->assertJsonPath('total', 5);
     }
 }

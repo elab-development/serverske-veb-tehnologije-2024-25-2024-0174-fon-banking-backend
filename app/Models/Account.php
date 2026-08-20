@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ExchangeRateService;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,8 +10,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Account extends Model
 {
-    private const EXCHANGE_RATE = 117.2;
-
     protected $fillable = [
         'id',
         'account_id',
@@ -24,28 +23,6 @@ class Account extends Model
     public $incrementing = false;
 
     protected $keyType = 'string';
-
-    public static function convertAmount(float $amount, string $fromCurrency, string $toCurrency): float
-    {
-        if ($fromCurrency === $toCurrency) {
-            return round($amount, 2);
-        }
-
-        return $fromCurrency === 'EUR'
-            ? round($amount * self::EXCHANGE_RATE, 2)
-            : round($amount / self::EXCHANGE_RATE, 2);
-    }
-
-    public static function exchangeRateBetween(string $fromCurrency, string $toCurrency): float
-    {
-        if ($fromCurrency === $toCurrency) {
-            return 1.0;
-        }
-
-        return $fromCurrency === 'EUR'
-            ? self::EXCHANGE_RATE
-            : round(1 / self::EXCHANGE_RATE, 6);
-    }
 
     protected function balance(): Attribute
     {
@@ -87,7 +64,7 @@ class Account extends Model
         $amount = $transaction->recipient_amount ?? $transaction->amount;
         $currency = $transaction->recipient_currency ?? $transaction->currency;
 
-        return self::convertAmount((float) $amount, $currency, $this->currency);
+        return app(ExchangeRateService::class)->convertAtMarket((float) $amount, $currency, $this->currency);
     }
 
     private function outgoingAmount(Transaction $transaction): float
@@ -95,6 +72,6 @@ class Account extends Model
         $amount = $transaction->sender_amount ?? $transaction->amount;
         $currency = $transaction->sender_currency ?? $transaction->currency;
 
-        return self::convertAmount((float) $amount, $currency, $this->currency);
+        return app(ExchangeRateService::class)->convertAtMarket((float) $amount, $currency, $this->currency);
     }
 }
