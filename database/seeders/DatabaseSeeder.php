@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\ActivationCode;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\ExchangeRateService;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -14,8 +15,6 @@ use Illuminate\Support\Str;
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
-
-    private const EXCHANGE_RATE = 117.2;
 
     public function run(): void
     {
@@ -365,12 +364,11 @@ class DatabaseSeeder extends Seeder
                     continue;
                 }
 
-                $senderDebitAmount = $this->convertAmount($amount, $recipientAccount->currency, $senderAccount->currency);
                 $purposes = $business['category']['payment_purposes'];
                 $purpose = $purposes[array_rand($purposes)];
                 $cardNumber = $this->mostlyCardNumber($senderAccount);
 
-                $this->createTransfer(
+                $senderDebitAmount = $this->createTransfer(
                     $senderAccount,
                     $recipientAccount,
                     trim($business['user']->first_name.' '.$business['user']->last_name),
@@ -411,9 +409,7 @@ class DatabaseSeeder extends Seeder
                     continue;
                 }
 
-                $senderDebitAmount = $this->convertAmount($amount, $recipientAccount->currency, $senderAccount->currency);
-
-                $this->createTransfer(
+                $senderDebitAmount = $this->createTransfer(
                     $senderAccount,
                     $recipientAccount,
                     trim($recipient->first_name.' '.$recipient->last_name),
@@ -444,7 +440,12 @@ class DatabaseSeeder extends Seeder
         mixed $transactionTime,
         ?string $cardNumber,
     ): float {
-        $senderAmount = $this->convertAmount($recipientAmount, $recipientAccount->currency, $senderAccount->currency);
+        $conversion = app(ExchangeRateService::class)->transferValues(
+            $recipientAmount,
+            $senderAccount->currency,
+            $recipientAccount->currency,
+        );
+        $senderAmount = $conversion['senderAmount'];
 
         Transaction::create([
             'id' => (string) Str::uuid(),
@@ -459,7 +460,7 @@ class DatabaseSeeder extends Seeder
             'sender_currency' => $senderAccount->currency,
             'recipient_amount' => $recipientAmount,
             'recipient_currency' => $recipientAccount->currency,
-            'exchange_rate' => Account::exchangeRateBetween($senderAccount->currency, $recipientAccount->currency),
+            'exchange_rate' => $conversion['exchangeRate'],
             'payment_purpose' => $paymentPurpose,
             'payment_code' => $paymentCode,
             'transaction_time' => $transactionTime,
@@ -545,13 +546,7 @@ class DatabaseSeeder extends Seeder
 
     private function convertAmount(float $amount, string $fromCurrency, string $toCurrency): float
     {
-        if ($fromCurrency === $toCurrency) {
-            return round($amount, 2);
-        }
-
-        return $fromCurrency === 'EUR'
-            ? round($amount * self::EXCHANGE_RATE, 2)
-            : round($amount / self::EXCHANGE_RATE, 2);
+        return app(ExchangeRateService::class)->convertAtMarket($amount, $fromCurrency, $toCurrency);
     }
 
     private function peerPaymentPurpose(): string
