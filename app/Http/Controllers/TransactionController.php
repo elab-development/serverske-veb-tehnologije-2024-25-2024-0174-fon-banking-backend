@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Account;
+use App\Models\Card;
 use App\Models\Transaction;
 use App\Services\AccountNumberService;
 use App\Services\ExchangeRateService;
@@ -136,8 +137,40 @@ class TransactionController extends Controller
             'direction' => ['sometimes', 'in:income,expense'],
             'period' => ['sometimes', 'in:7days,30days'],
             'method' => ['sometimes', 'in:card,pending'],
+            'account_id' => ['sometimes', 'string'],
+            'card_id' => ['sometimes', 'string'],
             'category' => ['sometimes', 'in:groceries,restaurants,fuel,utilities,telecom,transport,pharmacy,clothing,electronics,fitness,other'],
         ]);
+        $directionAccountIds = $accountIds;
+
+        if (isset($validated['account_id'])) {
+            $selectedAccountId = Account::query()
+                ->whereIn('id', $accountIds)
+                ->where('account_number', $validated['account_id'])
+                ->value('id');
+
+            if ($selectedAccountId !== null) {
+                $directionAccountIds = [$selectedAccountId];
+            }
+
+            $query->where(function (Builder $query) use ($selectedAccountId): void {
+                $query->where('sender_account_id', $selectedAccountId)
+                    ->orWhere('recipient_account_id', $selectedAccountId);
+            });
+        }
+
+        if (isset($validated['card_id'])) {
+            $selectedCard = Card::query()
+                ->whereIn('account_id', $accountIds)
+                ->where('card_id', $validated['card_id'])
+                ->first(['account_id', 'card_id']);
+
+            if ($selectedCard !== null) {
+                $directionAccountIds = [$selectedCard->account_id];
+            }
+
+            $query->where('card_number', $selectedCard?->card_id);
+        }
 
         if (! empty($validated['search'])) {
             $search = '%'.addcslashes($validated['search'], '%_\\').'%';
@@ -151,9 +184,11 @@ class TransactionController extends Controller
         }
 
         if (($validated['direction'] ?? null) === 'expense') {
-            $query->whereIn('sender_account_id', $accountIds);
+            $query->whereIn('sender_account_id', $directionAccountIds)
+                ->whereNotIn('recipient_account_id', $directionAccountIds);
         } elseif (($validated['direction'] ?? null) === 'income') {
-            $query->whereNotIn('sender_account_id', $accountIds);
+            $query->whereIn('recipient_account_id', $directionAccountIds)
+                ->whereNotIn('sender_account_id', $directionAccountIds);
         }
 
         if (isset($validated['period'])) {
@@ -209,6 +244,7 @@ class TransactionController extends Controller
             'recipientAccount' => $transaction->recipient->account_number,
             'recipientName' => $transaction->recipient_name,
             'senderAccount' => $transaction->sender->account_number,
+            'senderName' => $transaction->sender->name,
             'model' => $transaction->model,
             'referenceNumber' => $transaction->reference_number,
             'amount' => $transaction->amount,

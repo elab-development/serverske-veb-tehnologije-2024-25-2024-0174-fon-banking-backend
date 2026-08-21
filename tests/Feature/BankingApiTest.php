@@ -273,6 +273,7 @@ class BankingApiTest extends TestCase
         $response->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.senderAccount', $senderAccountNumber)
+            ->assertJsonPath('data.0.senderName', 'Test User')
             ->assertJsonPath('current_page', 1)
             ->assertJsonPath('total', 1);
     }
@@ -318,5 +319,106 @@ class BankingApiTest extends TestCase
             ->assertJsonPath('last_page', 3)
             ->assertJsonPath('per_page', 2)
             ->assertJsonPath('total', 5);
+
+        $receivingAccountNumber = $accounts[1]->account_number;
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/transactions?account_id={$receivingAccountNumber}&direction=income")
+            ->assertOk()
+            ->assertJsonPath('total', 5);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson("/api/v1/transactions?account_id={$receivingAccountNumber}&direction=expense")
+            ->assertOk()
+            ->assertJsonPath('total', 0);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions?direction=income')
+            ->assertOk()
+            ->assertJsonPath('total', 0);
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions?direction=expense')
+            ->assertOk()
+            ->assertJsonPath('total', 0);
+    }
+
+    public function test_transaction_history_can_be_filtered_by_owned_account_or_card(): void
+    {
+        $user = User::factory()->create();
+        $externalUser = User::factory()->create();
+        $firstAccount = Account::create([
+            'id' => 'acc-filter-first',
+            'user_id' => $user->id,
+            'title' => 'First account',
+            'name' => 'Test User',
+            'account_number' => '555100000000001001',
+            'color' => 'blue',
+            'currency' => 'RSD',
+        ]);
+        $secondAccount = Account::create([
+            'id' => 'acc-filter-second',
+            'user_id' => $user->id,
+            'title' => 'Second account',
+            'name' => 'Test User',
+            'account_number' => '555100000000001002',
+            'color' => 'blue',
+            'currency' => 'RSD',
+        ]);
+        $externalAccount = Account::create([
+            'id' => 'acc-filter-external',
+            'user_id' => $externalUser->id,
+            'title' => 'External account',
+            'name' => 'External User',
+            'account_number' => '555100000000001003',
+            'color' => 'blue',
+            'currency' => 'RSD',
+        ]);
+        $card = Card::create([
+            'id' => 'card-filter',
+            'account_id' => $firstAccount->id,
+            'card_id' => '5555555555551001',
+            'card_type' => 'Visa',
+            'expire_date' => '12/30',
+            'owner_name' => 'Test User',
+            'currency' => 'RSD',
+            'cvv' => '123',
+        ]);
+
+        Transaction::create([
+            'id' => 'txn-selected-card',
+            'sender_account_id' => $firstAccount->id,
+            'recipient_account_id' => $externalAccount->id,
+            'recipient_name' => 'External User',
+            'amount' => 100,
+            'currency' => 'RSD',
+            'transaction_time' => now(),
+            'status' => 'izvrsena',
+            'card_number' => $card->card_id,
+        ]);
+        Transaction::create([
+            'id' => 'txn-selected-account',
+            'sender_account_id' => $secondAccount->id,
+            'recipient_account_id' => $externalAccount->id,
+            'recipient_name' => 'External User',
+            'amount' => 200,
+            'currency' => 'RSD',
+            'transaction_time' => now(),
+            'status' => 'izvrsena',
+            'card_number' => null,
+        ]);
+
+        $token = $user->createToken('test')->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions?account_id='.$secondAccount->account_number)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 'txn-selected-account');
+
+        $this->withHeader('Authorization', 'Bearer '.$token)
+            ->getJson('/api/v1/transactions?card_id='.$card->card_id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 'txn-selected-card');
     }
 }
