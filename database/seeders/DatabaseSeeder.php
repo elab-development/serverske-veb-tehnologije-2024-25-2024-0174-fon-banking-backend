@@ -83,7 +83,6 @@ class DatabaseSeeder extends Seeder
         $peopleCount = (int) env('SEED_PERSON_COUNT', 30);
         $businessCount = (int) env('SEED_BUSINESS_COUNT', 24);
         $businessTransactionsPerPerson = (int) env('SEED_TRANSACTIONS_PER_PERSON', 20);
-        $peerTransactionsPerPerson = (int) env('SEED_PEER_TRANSACTIONS_PER_PERSON', 6);
 
         $people = $this->seedFakePeople($peopleCount, $accountTemplates, $systemAccounts, $ledger);
         $people = array_merge($people, [$user1->load('accounts'), $user2->load('accounts')]);
@@ -92,14 +91,16 @@ class DatabaseSeeder extends Seeder
         $this->seedIncomeTransactions($people, $systemAccounts['income'], $ledger);
         $this->seedBusinessFundingTransactions($businesses, $systemAccounts['card_settlement'], $ledger);
         $this->seedFakeSpendingTransactions($people, $businesses, $businessTransactionsPerPerson, $ledger);
-        $this->seedFakePeerTransactions($people, $peerTransactionsPerPerson, $ledger);
+        $this->seedFakePeerTransactions($people, [
+            $user1->id => $user2->id,
+            $user2->id => $user1->id,
+        ], $ledger);
 
         $this->command->info(sprintf(
-            'Succesfully seeded database with %d fake people, %d fake businesses, up to %d business transactions per person, and up to %d peer transactions per person.',
+            'Succesfully seeded database with %d fake people, %d fake businesses, up to %d business transactions per person, and 3-5 unique peer recipients per person.',
             $peopleCount,
             $businessCount,
             $businessTransactionsPerPerson,
-            $peerTransactionsPerPerson,
         ));
     }
 
@@ -394,25 +395,47 @@ class DatabaseSeeder extends Seeder
         }
     }
 
-    private function seedFakePeerTransactions(array $people, int $transactionsPerPerson, array &$ledger): void
+    private function seedFakePeerTransactions(array $people, array $preferredRecipients, array &$ledger): void
     {
-        if ($transactionsPerPerson <= 0 || count($people) < 2) {
+        if (count($people) < 2) {
             return;
         }
 
         foreach ($people as $sender) {
-            for ($index = 0; $index < $transactionsPerPerson; $index++) {
-                $recipient = $this->randomOtherPerson($people, $sender);
-                $senderAccount = $this->randomAccount($sender);
-                $recipientAccount = $this->randomAccount($recipient);
+            $recipients = array_values(array_filter(
+                $people,
+                fn (User $person): bool => $person->id !== $sender->id,
+            ));
+            shuffle($recipients);
+
+            $preferredRecipientId = $preferredRecipients[$sender->id] ?? null;
+            if ($preferredRecipientId !== null) {
+                usort(
+                    $recipients,
+                    fn (User $first, User $second): int => ($second->id === $preferredRecipientId) <=> ($first->id === $preferredRecipientId),
+                );
+            }
+
+            $maximumRecipients = min(5, count($recipients));
+            $recipientCount = random_int(min(3, $maximumRecipients), $maximumRecipients);
+
+            $selectedRecipients = array_slice($recipients, 0, $recipientCount);
+            foreach ($selectedRecipients as $index => $recipient) {
+                $senderAccount = $sender->accounts->firstWhere('currency', 'RSD');
+                $recipientAccount = $recipient->accounts->firstWhere('currency', 'RSD');
 
                 if (! $senderAccount || ! $recipientAccount) {
                     continue;
                 }
 
-                $amount = $this->affordableTransactionAmount($senderAccount, $recipientAccount, false, $ledger);
+                $available = $ledger[$senderAccount->id] ?? 0;
+                $remainingRecipients = count($selectedRecipients) - $index;
+                $amount = min(
+                    $this->transactionAmountForCurrency('RSD', false),
+                    floor($available / $remainingRecipients),
+                );
 
-                if ($amount === null) {
+                if ($amount < 100) {
                     continue;
                 }
 
@@ -425,7 +448,9 @@ class DatabaseSeeder extends Seeder
                     null,
                     random_int(0, 1) === 1 ? 97 : null,
                     random_int(0, 1) === 1 ? $this->randomDigits(12) : null,
-                    now()->subDays(random_int(0, 120))->subMinutes(random_int(0, 1440)),
+                    $recipient->id === $preferredRecipientId
+                        ? now()->subMinutes(random_int(0, 30))
+                        : now()->subDays(random_int(0, 120))->subMinutes(random_int(0, 1440)),
                     null,
                 );
 
@@ -489,15 +514,6 @@ class DatabaseSeeder extends Seeder
             'currency' => $account->currency,
             'cvv' => $this->randomDigits(3),
         ]);
-    }
-
-    private function randomOtherPerson(array $people, User $sender): User
-    {
-        do {
-            $recipient = $people[array_rand($people)];
-        } while ($recipient->id === $sender->id);
-
-        return $recipient;
     }
 
     private function randomAccount(User $user): ?Account
