@@ -12,7 +12,8 @@ class Account extends Model
 {
     protected $fillable = [
         'id',
-        'account_id',
+        'account_number',
+        'iban',
         'user_id',
         'title',
         'name',
@@ -51,12 +52,12 @@ class Account extends Model
 
     public function outgoingTransactions(): HasMany
     {
-        return $this->hasMany(Transaction::class, 'sender_account', 'account_id');
+        return $this->hasMany(Transaction::class, 'sender_account_id');
     }
 
     public function incomingTransactions(): HasMany
     {
-        return $this->hasMany(Transaction::class, 'recipient_account', 'account_id');
+        return $this->hasMany(Transaction::class, 'recipient_account_id');
     }
 
     private function incomingAmount(Transaction $transaction): float

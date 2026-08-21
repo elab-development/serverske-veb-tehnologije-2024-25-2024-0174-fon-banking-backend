@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Account;
 use App\Models\Transaction;
+use App\Services\AccountNumberService;
 use App\Services\ExchangeRateService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
 
 class TransactionController extends Controller
 {
-    public function store(Request $request, ExchangeRateService $exchangeRates): JsonResponse
+    public function store(Request $request, ExchangeRateService $exchangeRates, AccountNumberService $accountNumbers): JsonResponse
     {
         $userId = Auth::id();
 
@@ -30,17 +31,23 @@ class TransactionController extends Controller
         ]);
 
         $account = Account::query()
-            ->where('account_id', $validated['senderAccount'])
+            ->where('account_number', $accountNumbers->normalize($validated['senderAccount']))
             ->where('user_id', $userId)
             ->firstOrFail();
 
         $recipientAccount = Account::query()
-            ->where('account_id', $validated['recipientAccount'])
+            ->where('account_number', $accountNumbers->normalize($validated['recipientAccount']))
             ->first();
 
         if (! $recipientAccount) {
             return response()->json([
                 'message' => 'Recipient account does not exist.',
+            ], 422);
+        }
+
+        if ($account->is($recipientAccount)) {
+            return response()->json([
+                'message' => 'Sender and recipient accounts must be different.',
             ], 422);
         }
 
@@ -64,10 +71,10 @@ class TransactionController extends Controller
         }
 
         $transaction = Transaction::create([
-            'id' => 'txn-'.Str::upper(Str::random(4)),
-            'recipient_account' => $validated['recipientAccount'],
+            'id' => (string) Str::uuid(),
+            'recipient_account_id' => $recipientAccount->id,
             'recipient_name' => $validated['recipientName'],
-            'sender_account' => $validated['senderAccount'],
+            'sender_account_id' => $account->id,
             'model' => $validated['model'] ?? null,
             'reference_number' => $validated['referenceNumber'] ?? null,
             'amount' => $recipientAmount,
@@ -84,59 +91,40 @@ class TransactionController extends Controller
             'card_number' => null,
         ]);
 
-        return response()->json([
-            'id' => $transaction->id,
-            'recipientAccount' => $transaction->recipient_account,
-            'recipientName' => $transaction->recipient_name,
-            'senderAccount' => $transaction->sender_account,
-            'model' => $transaction->model,
-            'referenceNumber' => $transaction->reference_number,
-            'amount' => $transaction->amount,
-            'currency' => $transaction->currency,
-            'senderAmount' => $transaction->sender_amount,
-            'senderCurrency' => $transaction->sender_currency,
-            'recipientAmount' => $transaction->recipient_amount,
-            'recipientCurrency' => $transaction->recipient_currency,
-            'exchangeRate' => $transaction->exchange_rate,
-            'paymentPurpose' => $transaction->payment_purpose,
-            'paymentCode' => $transaction->payment_code,
-            'transactionTime' => $transaction->transaction_time?->toISOString(),
-            'status' => $transaction->status,
-            'cardNumber' => $transaction->card_number,
-        ], 201);
+        return response()->json($this->serializeTransaction($transaction->load(['sender', 'recipient'])), 201);
     }
 
     public function history(Request $request): JsonResponse
     {
         $accountIds = Account::query()
             ->where('user_id', Auth::id())
-            ->pluck('account_id');
+            ->pluck('id');
 
         $query = Transaction::query()
             ->where(function (Builder $query) use ($accountIds): void {
-                $query->whereIn('sender_account', $accountIds)
-                    ->orWhereIn('recipient_account', $accountIds);
+                $query->whereIn('sender_account_id', $accountIds)
+                    ->orWhereIn('recipient_account_id', $accountIds);
             });
 
         return $this->paginatedResponse($request, $query, $accountIds->all());
     }
 
-    public function index(Request $request, string $accountId): JsonResponse
+    public function index(Request $request, string $accountId, AccountNumberService $accountNumbers): JsonResponse
     {
         $userId = Auth::id();
 
         $account = Account::query()
-            ->where('account_id', $accountId)
+            ->where('account_number', $accountNumbers->normalize($accountId))
             ->where('user_id', $userId)
             ->firstOrFail();
 
         $query = Transaction::query()
-            ->where(function ($query) use ($accountId): void {
-                $query->where('sender_account', $accountId)
-                    ->orWhere('recipient_account', $accountId);
+            ->where(function ($query) use ($account): void {
+                $query->where('sender_account_id', $account->id)
+                    ->orWhere('recipient_account_id', $account->id);
             });
 
-        return $this->paginatedResponse($request, $query, [$account->account_id]);
+        return $this->paginatedResponse($request, $query, [$account->id]);
     }
 
     private function paginatedResponse(Request $request, Builder $query, array $accountIds): JsonResponse
@@ -155,17 +143,17 @@ class TransactionController extends Controller
             $search = '%'.addcslashes($validated['search'], '%_\\').'%';
             $query->where(function (Builder $query) use ($search): void {
                 $query->where('recipient_name', 'like', $search)
-                    ->orWhere('sender_account', 'like', $search)
-                    ->orWhere('recipient_account', 'like', $search)
+                    ->orWhereHas('sender', fn (Builder $query) => $query->where('account_number', 'like', $search))
+                    ->orWhereHas('recipient', fn (Builder $query) => $query->where('account_number', 'like', $search))
                     ->orWhere('payment_purpose', 'like', $search)
                     ->orWhere('payment_code', 'like', $search);
             });
         }
 
         if (($validated['direction'] ?? null) === 'expense') {
-            $query->whereIn('sender_account', $accountIds);
+            $query->whereIn('sender_account_id', $accountIds);
         } elseif (($validated['direction'] ?? null) === 'income') {
-            $query->whereNotIn('sender_account', $accountIds);
+            $query->whereNotIn('sender_account_id', $accountIds);
         }
 
         if (isset($validated['period'])) {
@@ -180,7 +168,7 @@ class TransactionController extends Controller
         }
 
         if (isset($validated['category'])) {
-            $suffixes = [
+            $paymentCodes = [
                 'groceries' => '5411',
                 'restaurants' => '5812',
                 'fuel' => '5541',
@@ -194,32 +182,18 @@ class TransactionController extends Controller
             ];
             $category = $validated['category'];
 
-            $query->where(function (Builder $query) use ($accountIds, $category, $suffixes): void {
-                $applyCounterpartySuffix = function (Builder $query, string $operator, string $suffix) use ($accountIds): void {
-                    $query->where(function (Builder $query) use ($accountIds, $operator, $suffix): void {
-                        $query->where(function (Builder $query) use ($accountIds, $operator, $suffix): void {
-                            $query->whereIn('sender_account', $accountIds)
-                                ->where('recipient_account', $operator, '%'.$suffix);
-                        })->orWhere(function (Builder $query) use ($accountIds, $operator, $suffix): void {
-                            $query->whereNotIn('sender_account', $accountIds)
-                                ->where('sender_account', $operator, '%'.$suffix);
-                        });
-                    });
-                };
-
-                if ($category === 'other') {
-                    foreach ($suffixes as $suffix) {
-                        $query->where(function (Builder $query) use ($applyCounterpartySuffix, $suffix): void {
-                            $applyCounterpartySuffix($query, 'not like', $suffix);
-                        });
-                    }
-                } else {
-                    $applyCounterpartySuffix($query, 'like', $suffixes[$category]);
-                }
-            });
+            if ($category === 'other') {
+                $query->where(function (Builder $query) use ($paymentCodes): void {
+                    $query->whereNull('payment_code')
+                        ->orWhereNotIn('payment_code', array_values($paymentCodes));
+                });
+            } else {
+                $query->where('payment_code', $paymentCodes[$category]);
+            }
         }
 
         $transactions = $query
+            ->with(['sender', 'recipient'])
             ->orderByDesc('transaction_time')
             ->orderByDesc('id')
             ->paginate($validated['per_page'] ?? 20)
@@ -232,9 +206,9 @@ class TransactionController extends Controller
     {
         return [
             'id' => $transaction->id,
-            'recipientAccount' => $transaction->recipient_account,
+            'recipientAccount' => $transaction->recipient->account_number,
             'recipientName' => $transaction->recipient_name,
-            'senderAccount' => $transaction->sender_account,
+            'senderAccount' => $transaction->sender->account_number,
             'model' => $transaction->model,
             'referenceNumber' => $transaction->reference_number,
             'amount' => $transaction->amount,

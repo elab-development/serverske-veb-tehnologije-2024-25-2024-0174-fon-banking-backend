@@ -11,8 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('payment_templates', function (Blueprint $table) {
+        Schema::create('payment_templates', function (Blueprint $table): void {
             $table->id();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->string('title');
+            $table->string('receiver_name');
+            $table->char('receiver_account_number', 18);
+            $table->string('payment_code')->nullable();
+            $table->string('reference_number')->nullable();
             $table->timestamps();
         });
     }

@@ -10,9 +10,9 @@ return new class extends Migration
     {
         Schema::create('transactions', function (Blueprint $table): void {
             $table->string('id')->primary();
-            $table->string('recipient_account');
+            $table->string('recipient_account_id');
             $table->string('recipient_name');
-            $table->string('sender_account');
+            $table->string('sender_account_id');
             $table->integer('model')->nullable();
             $table->string('reference_number')->nullable();
             $table->decimal('amount', 12, 2);
@@ -29,11 +29,11 @@ return new class extends Migration
             $table->string('card_number')->nullable();
             $table->timestamps();
 
-            $table->foreign('sender_account')->references('account_id')->on('accounts')->cascadeOnUpdate()->restrictOnDelete();
-            $table->foreign('recipient_account')->references('account_id')->on('accounts')->cascadeOnUpdate()->restrictOnDelete();
+            $table->foreign('sender_account_id')->references('id')->on('accounts')->restrictOnDelete();
+            $table->foreign('recipient_account_id')->references('id')->on('accounts')->restrictOnDelete();
             $table->foreign('card_number')->references('card_id')->on('cards')->nullOnDelete()->cascadeOnUpdate();
-            $table->index('recipient_account');
-            $table->index('sender_account');
+            $table->index('recipient_account_id');
+            $table->index('sender_account_id');
         });
     }
 

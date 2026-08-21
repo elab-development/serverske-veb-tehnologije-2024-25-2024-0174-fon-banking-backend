@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\ActivationCode;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AccountNumberService;
 use App\Services\ExchangeRateService;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
@@ -24,7 +25,6 @@ class DatabaseSeeder extends Seeder
             [
                 'title' => 'GLAVNI RACUN',
                 'name' => 'Tekuci dinarski racun',
-                'account_prefix' => 'RS35',
                 'balance_min' => 50000,
                 'balance_max' => 350000,
                 'balance_decimals' => 0,
@@ -34,7 +34,6 @@ class DatabaseSeeder extends Seeder
             [
                 'title' => 'DEVIZNI RACUN',
                 'name' => 'Tekuci devizni racun',
-                'account_prefix' => 'EUR31',
                 'balance_min' => 100,
                 'balance_max' => 5000,
                 'balance_decimals' => 2,
@@ -144,12 +143,16 @@ class DatabaseSeeder extends Seeder
             ]);
 
             foreach ($accountTemplates as $template) {
+                $accountNumber = $this->makeAccountNumber($template['currency'], $definition['suffix']);
                 $account = Account::create([
                     'id' => (string) Str::uuid(),
                     'user_id' => $systemUser->id,
                     'title' => $definition['title'].' '.$template['currency'],
                     'name' => 'Interni izvor sredstava',
-                    'account_id' => $this->makeAccountId($template['account_prefix'], $definition['suffix']),
+                    'account_number' => $accountNumber,
+                    'iban' => $template['currency'] === 'EUR'
+                        ? app(AccountNumberService::class)->generateIban($accountNumber)
+                        : null,
                     'color' => 'gray',
                     'currency' => $template['currency'],
                 ]);
@@ -224,12 +227,16 @@ class DatabaseSeeder extends Seeder
     private function seedAccountsForUser(User $user, array $accountTemplates, array $systemAccounts, array &$ledger, ?string $accountSuffix = null): void
     {
         foreach ($accountTemplates as $template) {
+            $accountNumber = $this->makeAccountNumber($template['currency'], $accountSuffix);
             $account = Account::create([
                 'id' => (string) Str::uuid(),
                 'user_id' => $user->id,
                 'title' => $template['title'],
-                'name' => $template['name'],
-                'account_id' => $this->makeAccountId($template['account_prefix'], $accountSuffix),
+                'name' => trim($user->first_name.' '.$user->last_name),
+                'account_number' => $accountNumber,
+                'iban' => $template['currency'] === 'EUR'
+                    ? app(AccountNumberService::class)->generateIban($accountNumber)
+                    : null,
                 'color' => $template['color'],
                 'currency' => $template['currency'],
             ]);
@@ -280,8 +287,8 @@ class DatabaseSeeder extends Seeder
             null,
         );
 
-        $ledger[$systemAccount->account_id] = ($ledger[$systemAccount->account_id] ?? 0) - $senderAmount;
-        $ledger[$account->account_id] = (float) $amount;
+        $ledger[$systemAccount->id] = ($ledger[$systemAccount->id] ?? 0) - $senderAmount;
+        $ledger[$account->id] = (float) $amount;
     }
 
     private function seedIncomeTransactions(array $people, array $incomeAccounts, array &$ledger): void
@@ -308,8 +315,8 @@ class DatabaseSeeder extends Seeder
                         null,
                     );
 
-                    $ledger[$sourceAccount->account_id] = ($ledger[$sourceAccount->account_id] ?? 0) - $senderAmount;
-                    $ledger[$account->account_id] = ($ledger[$account->account_id] ?? 0) + (float) $amount;
+                    $ledger[$sourceAccount->id] = ($ledger[$sourceAccount->id] ?? 0) - $senderAmount;
+                    $ledger[$account->id] = ($ledger[$account->id] ?? 0) + (float) $amount;
                 }
             }
         }
@@ -336,8 +343,8 @@ class DatabaseSeeder extends Seeder
                     null,
                 );
 
-                $ledger[$sourceAccount->account_id] = ($ledger[$sourceAccount->account_id] ?? 0) - $senderAmount;
-                $ledger[$account->account_id] = ($ledger[$account->account_id] ?? 0) + (float) $amount;
+                $ledger[$sourceAccount->id] = ($ledger[$sourceAccount->id] ?? 0) - $senderAmount;
+                $ledger[$account->id] = ($ledger[$account->id] ?? 0) + (float) $amount;
             }
         }
     }
@@ -381,8 +388,8 @@ class DatabaseSeeder extends Seeder
                     $cardNumber,
                 );
 
-                $ledger[$senderAccount->account_id] -= $senderDebitAmount;
-                $ledger[$recipientAccount->account_id] = ($ledger[$recipientAccount->account_id] ?? 0) + $amount;
+                $ledger[$senderAccount->id] -= $senderDebitAmount;
+                $ledger[$recipientAccount->id] = ($ledger[$recipientAccount->id] ?? 0) + $amount;
             }
         }
     }
@@ -422,8 +429,8 @@ class DatabaseSeeder extends Seeder
                     null,
                 );
 
-                $ledger[$senderAccount->account_id] -= $senderDebitAmount;
-                $ledger[$recipientAccount->account_id] = ($ledger[$recipientAccount->account_id] ?? 0) + $amount;
+                $ledger[$senderAccount->id] -= $senderDebitAmount;
+                $ledger[$recipientAccount->id] = ($ledger[$recipientAccount->id] ?? 0) + $amount;
             }
         }
     }
@@ -449,9 +456,9 @@ class DatabaseSeeder extends Seeder
 
         Transaction::create([
             'id' => (string) Str::uuid(),
-            'recipient_account' => $recipientAccount->account_id,
+            'recipient_account_id' => $recipientAccount->id,
             'recipient_name' => $recipientName,
-            'sender_account' => $senderAccount->account_id,
+            'sender_account_id' => $senderAccount->id,
             'model' => $model,
             'reference_number' => $referenceNumber,
             'amount' => $recipientAmount,
@@ -513,7 +520,7 @@ class DatabaseSeeder extends Seeder
 
     private function affordableTransactionAmount(Account $senderAccount, Account $recipientAccount, bool $businessPayment, array $ledger): ?float
     {
-        $available = $ledger[$senderAccount->account_id] ?? 0;
+        $available = $ledger[$senderAccount->id] ?? 0;
 
         if ($available <= 0) {
             return null;
@@ -582,16 +589,16 @@ class DatabaseSeeder extends Seeder
         return $digits;
     }
 
-    private function makeAccountId(string $prefix, ?string $suffix = null): string
+    private function makeAccountNumber(string $currency, ?string $suffix = null): string
     {
-        $suffix ??= $this->randomDigits(4);
-        $accountId = $prefix.'-'.$this->randomDigits(14).$suffix;
+        $accountNumbers = app(AccountNumberService::class);
+        $accountNumber = $accountNumbers->generate($currency, $suffix);
 
-        while (Account::query()->where('account_id', $accountId)->exists()) {
-            $accountId = $prefix.'-'.$this->randomDigits(14).$suffix;
+        while (Account::query()->where('account_number', $accountNumber)->exists()) {
+            $accountNumber = $accountNumbers->generate($currency, $suffix);
         }
 
-        return $accountId;
+        return $accountNumber;
     }
 
     private function fakeCompanyName(string $categoryKey): string

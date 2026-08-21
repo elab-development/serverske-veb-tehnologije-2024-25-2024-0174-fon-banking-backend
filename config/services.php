@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'nbs_qr' => [
+        'url' => env('NBS_QR_API_URL', 'https://nbs.rs/QRcode/api/qr/v1'),
+    ],
+
 ];

@@ -13,7 +13,8 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('title');
             $table->string('name');
-            $table->string('account_id')->unique();
+            $table->char('account_number', 18)->unique();
+            $table->char('iban', 22)->nullable()->unique();
             $table->string('color');
             $table->string('currency', 3);
             $table->timestamps();

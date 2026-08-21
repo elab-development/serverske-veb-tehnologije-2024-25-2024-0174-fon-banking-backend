@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Card;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AccountNumberService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -81,14 +82,15 @@ class BankingApiTest extends TestCase
     {
         $user = User::factory()->create();
         $otherUser = User::factory()->create();
+        $accountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
+        $otherAccountNumber = app(AccountNumberService::class)->generate('RSD', '9999');
 
         Account::create([
             'id' => 'acc-test-1',
             'user_id' => $user->id,
             'title' => 'Glavni tekući račun',
             'name' => 'Test User',
-            'account_id' => 'acc-1001',
-            'balance' => 45000.50,
+            'account_number' => $accountNumber,
             'color' => 'magenta',
             'currency' => 'RSD',
         ]);
@@ -98,8 +100,7 @@ class BankingApiTest extends TestCase
             'user_id' => $otherUser->id,
             'title' => 'Nepristupačan',
             'name' => 'Other User',
-            'account_id' => 'acc-9999',
-            'balance' => 500.00,
+            'account_number' => $otherAccountNumber,
             'color' => 'blue',
             'currency' => 'RSD',
         ]);
@@ -111,20 +112,20 @@ class BankingApiTest extends TestCase
 
         $response->assertOk()
             ->assertJsonCount(1)
-            ->assertJsonPath('0.accountId', 'acc-1001')
+            ->assertJsonPath('0.accountId', $accountNumber)
             ->assertJsonPath('0.balance', 0);
     }
 
     public function test_cards_endpoint_returns_cards_for_account(): void
     {
         $user = User::factory()->create();
+        $accountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
         $account = Account::create([
             'id' => 'acc-test-3',
             'user_id' => $user->id,
             'title' => 'Glavni tekući račun',
             'name' => 'Test User',
-            'account_id' => 'acc-1001',
-            'balance' => 45000.50,
+            'account_number' => $accountNumber,
             'color' => 'magenta',
             'currency' => 'RSD',
         ]);
@@ -143,7 +144,7 @@ class BankingApiTest extends TestCase
         $token = $user->createToken('test')->plainTextToken;
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/v1/accounts/acc-1001/cards');
+            ->getJson("/api/v1/accounts/{$accountNumber}/cards");
 
         $response->assertOk()
             ->assertJsonCount(1)
@@ -155,31 +156,31 @@ class BankingApiTest extends TestCase
     {
         $user = User::factory()->create();
         $otherUser = User::factory()->create();
-        Account::create([
+        $senderAccountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
+        $recipientAccountNumber = app(AccountNumberService::class)->generate('RSD', '2001');
+        $senderAccount = Account::create([
             'id' => 'acc-test-4',
             'user_id' => $user->id,
             'title' => 'Glavni tekući račun',
             'name' => 'Test User',
-            'account_id' => 'acc-1001',
-            'balance' => 45000.50,
+            'account_number' => $senderAccountNumber,
             'color' => 'magenta',
             'currency' => 'RSD',
         ]);
-        Account::create([
+        $recipientAccount = Account::create([
             'id' => 'acc-test-recipient',
             'user_id' => $otherUser->id,
             'title' => 'Račun primaoca',
             'name' => 'Pera Peric',
-            'account_id' => '160-123456789-01',
-            'balance' => 0,
+            'account_number' => $recipientAccountNumber,
             'color' => 'blue',
             'currency' => 'RSD',
         ]);
         Transaction::create([
             'id' => 'txn-funding-1',
-            'recipient_account' => 'acc-1001',
+            'recipient_account_id' => $senderAccount->id,
             'recipient_name' => 'Test User',
-            'sender_account' => '160-123456789-01',
+            'sender_account_id' => $recipientAccount->id,
             'amount' => 50000,
             'currency' => 'RSD',
             'transaction_time' => now(),
@@ -190,8 +191,8 @@ class BankingApiTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/transactions/transfer', [
-                'senderAccount' => 'acc-1001',
-                'recipientAccount' => '160-123456789-01',
+                'senderAccount' => $senderAccountNumber,
+                'recipientAccount' => $recipientAccountNumber,
                 'recipientName' => 'Pera Peric',
                 'amount' => 5000.00,
                 'currency' => 'RSD',
@@ -203,13 +204,13 @@ class BankingApiTest extends TestCase
 
         $response->assertCreated();
         $this->assertDatabaseHas('transactions', [
-            'sender_account' => 'acc-1001',
+            'sender_account_id' => $senderAccount->id,
             'status' => 'izvrsena',
         ]);
 
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/transactions/transfer', [
-                'senderAccount' => 'acc-1001',
+                'senderAccount' => $senderAccountNumber,
                 'recipientAccount' => 'missing-account',
                 'recipientName' => 'Missing User',
                 'amount' => 100,
@@ -225,23 +226,23 @@ class BankingApiTest extends TestCase
     {
         $user = User::factory()->create();
         $otherUser = User::factory()->create();
-        Account::create([
+        $senderAccountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
+        $recipientAccountNumber = app(AccountNumberService::class)->generate('RSD', '2001');
+        $senderAccount = Account::create([
             'id' => 'acc-test-5',
             'user_id' => $user->id,
             'title' => 'Glavni tekući račun',
             'name' => 'Test User',
-            'account_id' => 'acc-1001',
-            'balance' => 45000.50,
+            'account_number' => $senderAccountNumber,
             'color' => 'magenta',
             'currency' => 'RSD',
         ]);
-        Account::create([
+        $recipientAccount = Account::create([
             'id' => 'acc-test-6',
             'user_id' => $otherUser->id,
             'title' => 'Račun primaoca',
             'name' => 'Pera Peric',
-            'account_id' => '160-123456789-01',
-            'balance' => 0,
+            'account_number' => $recipientAccountNumber,
             'color' => 'blue',
             'currency' => 'RSD',
         ]);
@@ -249,9 +250,9 @@ class BankingApiTest extends TestCase
         Transaction::create([
             'id' => 'txn-test-1',
             'transaction_type' => 'odliv',
-            'recipient_account' => '160-123456789-01',
+            'recipient_account_id' => $recipientAccount->id,
             'recipient_name' => 'Pera Peric',
-            'sender_account' => 'acc-1001',
+            'sender_account_id' => $senderAccount->id,
             'sender_name' => 'Test User',
             'model' => 97,
             'reference_number' => '12-3456-7890',
@@ -267,11 +268,11 @@ class BankingApiTest extends TestCase
         $token = $user->createToken('test')->plainTextToken;
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson('/api/v1/accounts/acc-1001/transactions?per_page=10');
+            ->getJson("/api/v1/accounts/{$senderAccountNumber}/transactions?per_page=10");
 
         $response->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.senderAccount', 'acc-1001')
+            ->assertJsonPath('data.0.senderAccount', $senderAccountNumber)
             ->assertJsonPath('current_page', 1)
             ->assertJsonPath('total', 1);
     }
@@ -279,13 +280,14 @@ class BankingApiTest extends TestCase
     public function test_transaction_history_is_paginated_without_duplicate_owned_account_transfers(): void
     {
         $user = User::factory()->create();
-        foreach (['acc-1001', 'acc-1002'] as $index => $accountId) {
-            Account::create([
+        $accounts = [];
+        foreach (['1001', '1002'] as $index => $suffix) {
+            $accounts[] = Account::create([
                 'id' => 'acc-page-'.$index,
                 'user_id' => $user->id,
                 'title' => 'Account',
                 'name' => 'Test User',
-                'account_id' => $accountId,
+                'account_number' => app(AccountNumberService::class)->generate('RSD', $suffix),
                 'color' => 'blue',
                 'currency' => 'RSD',
             ]);
@@ -294,9 +296,9 @@ class BankingApiTest extends TestCase
         for ($index = 1; $index <= 5; $index++) {
             Transaction::create([
                 'id' => 'txn-page-'.$index,
-                'recipient_account' => 'acc-1002',
+                'recipient_account_id' => $accounts[1]->id,
                 'recipient_name' => 'Test User',
-                'sender_account' => 'acc-1001',
+                'sender_account_id' => $accounts[0]->id,
                 'amount' => $index,
                 'currency' => 'RSD',
                 'transaction_time' => now()->subMinutes($index),

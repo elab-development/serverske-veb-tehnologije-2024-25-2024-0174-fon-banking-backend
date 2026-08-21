@@ -3,11 +3,11 @@
 return [
     /*
     |--------------------------------------------------------------------------
-    | Business account category codes
+    | Transaction category payment codes
     |--------------------------------------------------------------------------
     |
-    | Seeded business account IDs end with one of these four-digit codes.
-    | The frontend can map the last four digits of recipientAccount to icon_key.
+    | Seeded business transactions use these codes as payment_code values.
+    | The frontend maps paymentCode to the matching category and icon.
     |
     */
     'personal_code' => '0000',

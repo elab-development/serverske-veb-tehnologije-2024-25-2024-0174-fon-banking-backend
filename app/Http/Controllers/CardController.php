@@ -4,17 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\Account;
 use App\Models\Card;
+use App\Services\AccountNumberService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 
 class CardController extends Controller
 {
-    public function index(string $accountId): JsonResponse
+    public function index(string $accountId, AccountNumberService $accountNumbers): JsonResponse
     {
         $userId = Auth::id();
 
         $account = Account::query()
-            ->where('account_id', $accountId)
+            ->where('account_number', $accountNumbers->normalize($accountId))
             ->where('user_id', $userId)
             ->firstOrFail();
 
@@ -23,7 +24,7 @@ class CardController extends Controller
             ->get()
             ->map(function (Card $card): array {
                 return [
-                    'accountId' => $card->account->account_id,
+                    'accountId' => $card->account->account_number,
                     'cardId' => $card->card_id,
                     'cardType' => $card->card_type,
                     'expireDate' => $card->expire_date,

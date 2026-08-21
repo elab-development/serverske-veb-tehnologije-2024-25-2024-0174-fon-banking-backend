@@ -9,9 +9,9 @@ class Transaction extends Model
 {
     protected $fillable = [
         'id',
-        'recipient_account',
+        'recipient_account_id',
         'recipient_name',
-        'sender_account',
+        'sender_account_id',
         'model',
         'reference_number',
         'amount',
@@ -45,12 +45,12 @@ class Transaction extends Model
 
     public function sender(): BelongsTo
     {
-        return $this->belongsTo(Account::class, 'sender_account', 'account_id');
+        return $this->belongsTo(Account::class, 'sender_account_id');
     }
 
     public function recipient(): BelongsTo
     {
-        return $this->belongsTo(Account::class, 'recipient_account', 'account_id');
+        return $this->belongsTo(Account::class, 'recipient_account_id');
     }
 
     public function card(): BelongsTo

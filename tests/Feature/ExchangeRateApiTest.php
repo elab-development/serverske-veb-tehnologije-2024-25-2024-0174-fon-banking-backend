@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Account;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\AccountNumberService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -55,29 +56,31 @@ class ExchangeRateApiTest extends TestCase
         ]);
         $sender = User::factory()->create();
         $recipient = User::factory()->create();
-        Account::create([
+        $senderAccountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
+        $recipientAccountNumber = app(AccountNumberService::class)->generate('EUR', '1001');
+        $senderAccount = Account::create([
             'id' => 'sender-rsd',
             'user_id' => $sender->id,
             'title' => 'RSD account',
             'name' => 'Sender',
-            'account_id' => 'RSD-1001',
+            'account_number' => $senderAccountNumber,
             'color' => 'magenta',
             'currency' => 'RSD',
         ]);
-        Account::create([
+        $recipientAccount = Account::create([
             'id' => 'recipient-eur',
             'user_id' => $recipient->id,
             'title' => 'EUR account',
             'name' => 'Recipient',
-            'account_id' => 'EUR-1001',
+            'account_number' => $recipientAccountNumber,
             'color' => 'blue',
             'currency' => 'EUR',
         ]);
         Transaction::create([
             'id' => 'funding',
-            'recipient_account' => 'RSD-1001',
+            'recipient_account_id' => $senderAccount->id,
             'recipient_name' => 'Sender',
-            'sender_account' => 'EUR-1001',
+            'sender_account_id' => $recipientAccount->id,
             'amount' => 50000,
             'currency' => 'RSD',
             'recipient_amount' => 50000,
@@ -91,8 +94,8 @@ class ExchangeRateApiTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/transactions/transfer', [
-                'senderAccount' => 'RSD-1001',
-                'recipientAccount' => 'EUR-1001',
+                'senderAccount' => $senderAccountNumber,
+                'recipientAccount' => $recipientAccountNumber,
                 'recipientName' => 'Recipient',
                 'amount' => 1235.29,
                 'currency' => 'RSD',
