@@ -5,13 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Passkeys\Contracts\PasskeyUser;
-use Laravel\Passkeys\PasskeyAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable implements PasskeyUser
+class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, PasskeyAuthenticatable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected static function booted(): void
     {
@@ -50,11 +48,6 @@ class User extends Authenticatable implements PasskeyUser
     public function devices()
     {
         return $this->hasMany(Device::class);
-    }
-
-    public function getPasskeyDisplayName(): string
-    {
-        return trim($this->first_name.' '.$this->last_name);
     }
 
     public function accounts()

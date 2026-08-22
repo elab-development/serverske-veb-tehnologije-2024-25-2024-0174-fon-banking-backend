@@ -142,8 +142,8 @@ class AuthSecurityTest extends TestCase
         $grant = app(PinConfirmationGrant::class);
 
         $this->assertIsString($confirmationToken);
-        $this->assertTrue($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'passkeys.manage'));
-        $this->assertFalse($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'passkeys.manage'));
+        $this->assertTrue($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'sensitive-action'));
+        $this->assertFalse($grant->consume($confirmationToken, $user->id, $token->accessToken->id, 'sensitive-action'));
     }
 
     public function test_pin_confirmation_grant_cannot_be_redeemed_by_another_bearer_token(): void
@@ -159,8 +159,8 @@ class AuthSecurityTest extends TestCase
 
         $grant = app(PinConfirmationGrant::class);
 
-        $this->assertFalse($grant->consume($confirmationToken, $user->id, $otherToken->accessToken->id, 'passkeys.manage'));
-        $this->assertTrue($grant->consume($confirmationToken, $user->id, $issuingToken->accessToken->id, 'passkeys.manage'));
+        $this->assertFalse($grant->consume($confirmationToken, $user->id, $otherToken->accessToken->id, 'sensitive-action'));
+        $this->assertTrue($grant->consume($confirmationToken, $user->id, $issuingToken->accessToken->id, 'sensitive-action'));
     }
 
     public function test_pin_confirmation_grant_expires_after_five_minutes(): void
@@ -179,7 +179,7 @@ class AuthSecurityTest extends TestCase
             $confirmationToken,
             $user->id,
             $token->accessToken->id,
-            'passkeys.manage',
+            'sensitive-action',
         ));
     }
 

@@ -292,7 +292,7 @@ class AuthController extends Controller
         $grant = $grants->issue(
             $request->user()->getKey(),
             $accessToken->getKey(),
-            'passkeys.manage',
+            'sensitive-action',
         );
 
         return response()->json([
