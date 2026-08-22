@@ -121,7 +121,6 @@ class TransactionController extends Controller
             'method' => ['sometimes', 'in:card,pending'],
             'account_id' => ['sometimes', 'string'],
             'card_id' => ['sometimes', 'string'],
-            'category' => ['sometimes', 'in:groceries,restaurants,fuel,utilities,telecom,transport,pharmacy,clothing,electronics,fitness,other'],
         ]);
         $directionAccountIds = $accountIds;
 
@@ -182,31 +181,6 @@ class TransactionController extends Controller
             $query->whereNotNull('card_number');
         } elseif (($validated['method'] ?? null) === 'pending') {
             $query->where('status', 'na_cekanju');
-        }
-
-        if (isset($validated['category'])) {
-            $paymentCodes = [
-                'groceries' => '5411',
-                'restaurants' => '5812',
-                'fuel' => '5541',
-                'utilities' => '4900',
-                'telecom' => '4814',
-                'transport' => '4111',
-                'pharmacy' => '5912',
-                'clothing' => '5691',
-                'electronics' => '5732',
-                'fitness' => '7997',
-            ];
-            $category = $validated['category'];
-
-            if ($category === 'other') {
-                $query->where(function (Builder $query) use ($paymentCodes): void {
-                    $query->whereNull('payment_code')
-                        ->orWhereNotIn('payment_code', array_values($paymentCodes));
-                });
-            } else {
-                $query->where('payment_code', $paymentCodes[$category]);
-            }
         }
 
         $transactions = $query
