@@ -19,7 +19,6 @@ Route::middleware(['auth:sanctum', 'active-user'])->prefix('v1')->group(function
     Route::post('/qr/validate', [NbsQrController::class, 'validateQr']);
     Route::post('/qr/generate', [NbsQrController::class, 'generate']);
     Route::get('/transactions', [TransactionController::class, 'history']);
-    Route::get('/accounts/{accountId}/transactions', [TransactionController::class, 'index']);
     Route::post('/auth/confirm-pin', [AuthController::class, 'confirmPin'])
         ->middleware('throttle:pin-confirmation');
     Route::post('/logout', [AuthController::class, 'logout']);

@@ -222,62 +222,6 @@ class BankingApiTest extends TestCase
         $this->assertDatabaseCount('transactions', 2);
     }
 
-    public function test_transactions_endpoint_returns_history_for_account(): void
-    {
-        $user = User::factory()->create();
-        $otherUser = User::factory()->create();
-        $senderAccountNumber = app(AccountNumberService::class)->generate('RSD', '1001');
-        $recipientAccountNumber = app(AccountNumberService::class)->generate('RSD', '2001');
-        $senderAccount = Account::create([
-            'id' => 'acc-test-5',
-            'user_id' => $user->id,
-            'title' => 'Glavni tekući račun',
-            'name' => 'Test User',
-            'account_number' => $senderAccountNumber,
-            'color' => 'magenta',
-            'currency' => 'RSD',
-        ]);
-        $recipientAccount = Account::create([
-            'id' => 'acc-test-6',
-            'user_id' => $otherUser->id,
-            'title' => 'Račun primaoca',
-            'name' => 'Pera Peric',
-            'account_number' => $recipientAccountNumber,
-            'color' => 'blue',
-            'currency' => 'RSD',
-        ]);
-
-        Transaction::create([
-            'id' => 'txn-test-1',
-            'transaction_type' => 'odliv',
-            'recipient_account_id' => $recipientAccount->id,
-            'recipient_name' => 'Pera Peric',
-            'sender_account_id' => $senderAccount->id,
-            'sender_name' => 'Test User',
-            'model' => 97,
-            'reference_number' => '12-3456-7890',
-            'amount' => 5000.00,
-            'currency' => 'RSD',
-            'payment_purpose' => 'Uplata za racun',
-            'payment_code' => '289',
-            'transaction_time' => now(),
-            'status' => 'izvrsena',
-            'card_number' => null,
-        ]);
-
-        $token = $user->createToken('test')->plainTextToken;
-
-        $response = $this->withHeader('Authorization', 'Bearer '.$token)
-            ->getJson("/api/v1/accounts/{$senderAccountNumber}/transactions?per_page=10");
-
-        $response->assertOk()
-            ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.senderAccount', $senderAccountNumber)
-            ->assertJsonPath('data.0.senderName', 'Test User')
-            ->assertJsonPath('current_page', 1)
-            ->assertJsonPath('total', 1);
-    }
-
     public function test_transaction_history_is_paginated_without_duplicate_owned_account_transfers(): void
     {
         $user = User::factory()->create();

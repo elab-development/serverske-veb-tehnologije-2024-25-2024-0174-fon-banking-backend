@@ -110,24 +110,6 @@ class TransactionController extends Controller
         return $this->paginatedResponse($request, $query, $accountIds->all());
     }
 
-    public function index(Request $request, string $accountId, AccountNumberService $accountNumbers): JsonResponse
-    {
-        $userId = Auth::id();
-
-        $account = Account::query()
-            ->where('account_number', $accountNumbers->normalize($accountId))
-            ->where('user_id', $userId)
-            ->firstOrFail();
-
-        $query = Transaction::query()
-            ->where(function ($query) use ($account): void {
-                $query->where('sender_account_id', $account->id)
-                    ->orWhere('recipient_account_id', $account->id);
-            });
-
-        return $this->paginatedResponse($request, $query, [$account->id]);
-    }
-
     private function paginatedResponse(Request $request, Builder $query, array $accountIds): JsonResponse
     {
         $validated = $request->validate([
