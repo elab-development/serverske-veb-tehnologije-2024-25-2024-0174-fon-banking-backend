@@ -1,58 +1,280 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# FON Banking API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Serverska aplikacija za demonstracioni sistem mobilnog bankarstva FON Banking. API je razvijen u Laravelu i mobilnoj aplikaciji obezbedjuje aktivaciju uredjaja, prijavu PIN-om, pregled racuna i kartica, prenose novca, istoriju transakcija, kursnu listu i rad sa NBS IPS QR kodovima.
 
-## About Laravel
+> Projekat je prototip namenjen demonstraciji. Ne povezuje se sa stvarnom bankom ili platnim sistemom i ne treba ga koristiti za obradu stvarnih finansijskih podataka.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Klijentska aplikacija: [fon-banking-frontend](https://github.com/Nenad005/fon-banking-frontend)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Funkcionalnosti
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- aktivacija uredjaja pomocu jednokratnog aktivacionog koda;
+- postavljanje i provera cetvorocifrenog PIN-a;
+- Bearer autentifikacija pomocu Laravel Sanctum tokena;
+- pregled profila, racuna, izracunatih stanja i kartica;
+- lokalni transferi izmedju racuna u demonstracionoj bazi;
+- paginirana istorija transakcija sa pretragom i filterima;
+- kursna lista i konverzija valuta;
+- validacija i generisanje NBS IPS QR sadrzaja;
+- SQLite baza i generator demonstracionih podataka.
 
-## Learning Laravel
+API rute koriste prefiks `/api/v1`. Provera dostupnosti servera nalazi se na `/up`.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Potrebni alati
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Za lokalno pokretanje bez Dockera potrebni su:
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- PHP 8.3 ili noviji;
+- Composer 2;
+- PHP ekstenzije koje zahteva Laravel, ukljucujuci PDO SQLite;
+- Git.
 
-## Agentic Development
+Za kontejnersko pokretanje dovoljni su Docker Engine i Docker Compose v2.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+QR i kursne funkcionalnosti zahtevaju pristup internetu zbog komunikacije sa NBS i Frankfurter servisima.
+
+## Lokalno pokretanje
+
+Klonirajte repozitorijum i udjite u njegov direktorijum:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+git clone https://github.com/Nenad005/fon-banking-backend.git
+cd fon-banking-backend
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Instalirajte PHP zavisnosti i napravite lokalnu konfiguraciju:
 
-## Contributing
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Napravite SQLite datoteku, formirajte semu i unesite demonstracione podatke:
 
-## Code of Conduct
+```bash
+touch database/database.sqlite
+php artisan migrate:fresh --seed
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Pokrenite API tako da bude dostupan i mobilnim uredjajima u lokalnoj mrezi:
 
-## Security Vulnerabilities
+```bash
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Server je zatim dostupan na:
 
-## License
+- `http://localhost:8000/up` na razvojnom racunaru;
+- `http://localhost:8000/api/v1` kao osnovni API URL;
+- `http://<LAN_IP_RACUNARA>:8000/api/v1` sa fizickog telefona.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+LAN adresu racunara mozete pronaci u mreznim podesavanjima operativnog sistema. Telefon i racunar moraju biti na istoj mrezi, a firewall mora dozvoliti dolazni saobracaj na portu 8000.
+
+## Lokalni `.env`
+
+Za uobicajeno lokalno pokretanje dovoljne su sledece vrednosti. Ostale vrednosti iz `.env.example` mogu ostati nepromenjene.
+
+```env
+APP_NAME="FON Banking"
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+
+LOG_CHANNEL=stack
+LOG_LEVEL=debug
+
+DB_CONNECTION=sqlite
+SESSION_DRIVER=file
+CACHE_STORE=database
+QUEUE_CONNECTION=database
+
+PIN_LOGIN_MAX_ATTEMPTS=5
+PIN_LOGIN_DECAY_SECONDS=900
+PIN_CONFIRMATION_TTL=300
+PIN_ENROLLMENT_TTL=600
+DEVICE_TOKEN_TTL_MINUTES=43200
+
+NBS_QR_API_URL=https://nbs.rs/QRcode/api/qr/v1
+FRANKFURTER_API_URL=https://api.frankfurter.dev/v2
+
+SEED_PERSON_COUNT=30
+SEED_BUSINESS_COUNT=24
+SEED_TRANSACTIONS_PER_PERSON=20
+SEED_PEER_TRANSACTIONS_PER_PERSON=6
+```
+
+`APP_KEY` se ne unosi rucno; generise ga komanda `php artisan key:generate`. Kada `DB_DATABASE` nije postavljen, aplikacija koristi `database/database.sqlite`.
+
+Seeder uvek pravi dva naloga pogodna za demonstraciju:
+
+| Korisnik | Aktivacioni kod |
+| --- | --- |
+| Luka Nenadovic | `LUKA-2026` |
+| Marko Nenadovic | `MARKO-2026` |
+
+Aktivacioni kod se moze iskoristiti samo jednom. Za ponavljanje kompletnog aktivacionog toka ponovo formirajte bazu komandom `php artisan migrate:fresh --seed`.
+
+## Pokretanje pomocu Dockera
+
+Docker image iz projekta sadrzi PHP-FPM i nginx i unutar kontejnera slusa na portu 8080. Za opste lokalno okruzenje `compose.yaml` treba da izlozi taj port direktno na racunaru i da koristi named volume za SQLite bazu, bez spoljne proxy mreze ili domena.
+
+Primer samostalnog `compose.yaml` fajla:
+
+```yaml
+name: fon-banking
+
+x-backend-environment: &backend-environment
+  APP_NAME: FON Banking
+  APP_ENV: production
+  APP_DEBUG: "false"
+  APP_URL: http://localhost:8000
+  LOG_CHANNEL: stderr
+  LOG_LEVEL: info
+  DB_CONNECTION: sqlite
+  DB_DATABASE: /data/database.sqlite
+  SESSION_DRIVER: array
+  CACHE_STORE: file
+  QUEUE_CONNECTION: sync
+
+services:
+  backend-init:
+    build:
+      context: .
+    user: root
+    env_file: .env.docker
+    environment: *backend-environment
+    command:
+      - sh
+      - -eu
+      - -c
+      - |
+        test -n "$${APP_KEY}"
+        chown www-data:www-data /data
+        touch /data/database.sqlite
+        chown www-data:www-data /data/database.sqlite
+        if [ ! -f /data/.initialized ]; then
+          setpriv --reuid=www-data --regid=www-data --init-groups php artisan migrate --seed --force
+          touch /data/.initialized
+        else
+          setpriv --reuid=www-data --regid=www-data --init-groups php artisan migrate --force
+        fi
+    volumes:
+      - backend-data:/data
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+    env_file: .env.docker
+    environment: *backend-environment
+    depends_on:
+      backend-init:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8080"
+    volumes:
+      - backend-data:/data
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+```
+
+Napravite `.env.docker` pored `compose.yaml` fajla:
+
+```env
+APP_KEY=base64:OVDE_UNETI_GENERISANI_KLJUC
+
+PIN_LOGIN_MAX_ATTEMPTS=5
+PIN_LOGIN_DECAY_SECONDS=900
+PIN_CONFIRMATION_TTL=300
+PIN_ENROLLMENT_TTL=600
+DEVICE_TOKEN_TTL_MINUTES=43200
+
+NBS_QR_API_URL=https://nbs.rs/QRcode/api/qr/v1
+FRANKFURTER_API_URL=https://api.frankfurter.dev/v2
+
+SEED_PERSON_COUNT=30
+SEED_BUSINESS_COUNT=24
+SEED_TRANSACTIONS_PER_PERSON=20
+SEED_PEER_TRANSACTIONS_PER_PERSON=6
+```
+
+Generisite Laravel aplikacioni kljuc bez instaliranja PHP-a na racunar:
+
+```bash
+docker build -t fon-banking-backend .
+docker run --rm fon-banking-backend php artisan key:generate --show
+```
+
+Dobijenu vrednost, zajedno sa prefiksom `base64:`, unesite kao `APP_KEY` u `.env.docker`, a zatim pokrenite aplikaciju:
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+Provera dostupnosti:
+
+```bash
+curl http://localhost:8000/up
+```
+
+Prikaz logova i zaustavljanje:
+
+```bash
+docker compose logs -f backend
+docker compose down
+```
+
+Komanda `docker compose down` ne brise SQLite podatke. Za potpuno cistu bazu i ponovno seedovanje uklonite i named volume:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+```
+
+## Povezivanje mobilne aplikacije
+
+Vrednost `EXPO_PUBLIC_API_URL` u frontend aplikaciji mora pokazivati na ovaj server:
+
+| Okruzenje klijenta | API URL |
+| --- | --- |
+| Fizicki Android ili iPhone | `http://<LAN_IP_RACUNARA>:8000/api/v1` |
+| Android emulator | `http://10.0.2.2:8000/api/v1` |
+| iOS Simulator | `http://127.0.0.1:8000/api/v1` |
+
+Detaljna uputstva nalaze se u README fajlu klijentskog repozitorijuma.
+
+## Provere kvaliteta
+
+Pokretanje serverskih testova:
+
+```bash
+composer test
+```
+
+Provera formatiranja PHP koda:
+
+```bash
+vendor/bin/pint --test
+```
+
+## Korisne komande
+
+```bash
+# Prikaz svih API ruta
+php artisan route:list --path=api
+
+# Potpuno ponovno formiranje demonstracione baze
+php artisan migrate:fresh --seed
+
+# Brisanje konfiguracionog i aplikacionog cache-a
+php artisan optimize:clear
+```
+
+## Licenca
+
+Projekat je razvijen u obrazovne svrhe u okviru Fakulteta organizacionih nauka Univerziteta u Beogradu.
