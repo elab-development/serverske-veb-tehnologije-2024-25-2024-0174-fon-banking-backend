@@ -20,7 +20,6 @@ Route::middleware(['auth:sanctum', 'active-user'])->prefix('v1')->group(function
     Route::post('/auth/confirm-pin', [AuthController::class, 'confirmPin'])
         ->middleware('throttle:pin-confirmation');
     Route::post('/logout', [AuthController::class, 'logout']);
-
 });
 
 Route::middleware('api')->prefix('v1')->group(function (): void {
