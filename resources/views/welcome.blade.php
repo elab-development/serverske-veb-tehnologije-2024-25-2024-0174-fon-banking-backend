@@ -151,6 +151,50 @@
             line-height: 1.65;
         }
 
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            max-width: 620px;
+            margin-top: 34px;
+        }
+
+        .action {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            min-height: 54px;
+            padding: 0 18px;
+            border: 1px solid var(--line);
+            color: var(--ink);
+            background: rgba(255, 255, 255, 0.025);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-decoration: none;
+            transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
+        }
+
+        .action::after {
+            color: var(--accent);
+            content: "↗";
+            font-size: 16px;
+        }
+
+        .action--internal::after {
+            content: "→";
+        }
+
+        .action:hover,
+        .action:focus-visible {
+            border-color: rgba(185, 243, 107, 0.58);
+            color: var(--accent);
+            background: rgba(185, 243, 107, 0.07);
+            outline: none;
+            transform: translateY(-2px);
+        }
+
         .panel {
             padding: 28px;
             border: 1px solid var(--line);
@@ -243,6 +287,12 @@
                 flex-direction: column;
             }
         }
+
+        @media (max-width: 480px) {
+            .actions {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -273,6 +323,12 @@
                 <p class="intro">
                     Fon Banking is an educational mobile banking platform. Its secure REST API powers account access, card management, transfers, and transaction history for the companion mobile application.
                 </p>
+                <nav class="actions" aria-label="Project resources">
+                    <a class="action" href="https://github.com/Nenad005/fon-banking-backend" target="_blank" rel="noopener noreferrer">Backend GitHub</a>
+                    <a class="action" href="https://github.com/Nenad005/fon-banking-frontend" target="_blank" rel="noopener noreferrer">Frontend GitHub</a>
+                    <a class="action action--internal" href="/api/documentation">API documentation</a>
+                    <a class="action action--internal" href="/laravel-erd/fon-banking">Database diagram</a>
+                </nav>
             </section>
 
             <aside class="panel">

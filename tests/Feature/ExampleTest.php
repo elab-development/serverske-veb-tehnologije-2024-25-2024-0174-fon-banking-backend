@@ -13,6 +13,10 @@ class ExampleTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        $response->assertStatus(200)
+            ->assertSee('https://github.com/Nenad005/fon-banking-backend', escape: false)
+            ->assertSee('https://github.com/Nenad005/fon-banking-frontend', escape: false)
+            ->assertSee('href="/api/documentation"', escape: false)
+            ->assertSee('href="/laravel-erd/fon-banking"', escape: false);
     }
 }
