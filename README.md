@@ -37,6 +37,19 @@ docker run --rm -p 8081:8080 \
 
 Dokumentacija će biti dostupna na `http://localhost:8081`. Dugme **Authorize** prihvata Sanctum token dobijen preko `/api/v1/set_pin` ili `/api/v1/login`; unosi se samo vrednost tokena, bez prefiksa `Bearer`.
 
+## Dijagram baze podataka
+
+Interaktivni dijagram baze podataka dostupan je na `/laravel-erd/fon-banking` kada je server pokrenut.
+
+Podaci za dijagram nalaze se u generisanom fajlu `docs/erd/fon-banking.sql`. Nakon izmene modela ili migracija dijagram se osvezava komandom:
+
+```bash
+APP_ENV=local php artisan erd:generate \
+  --directory=app/Models \
+  --file=fon-banking.sql \
+  --excludes=cache,cache_locks,jobs,job_batches,failed_jobs,personal_access_tokens,notifications
+```
+
 ## Potrebni alati
 
 Za lokalno pokretanje bez Dockera potrebni su:
