@@ -16,26 +16,25 @@ Klijentska aplikacija: [fon-banking-frontend](https://github.com/Nenad005/fon-ba
 - paginirana istorija transakcija sa pretragom i filterima;
 - kursna lista i konverzija valuta;
 - validacija i generisanje NBS IPS QR sadrzaja;
+- OpenAPI 3.1 specifikacija i Swagger UI koji servira Laravel;
 - SQLite baza i generator demonstracionih podataka.
 
 API rute koriste prefiks `/api/v1`. Provera dostupnosti servera nalazi se na `/up`.
 
 ## REST API dokumentacija
 
-Kompletna OpenAPI 3.1 specifikacija nalazi se u fajlu [`openapi.yaml`](openapi.yaml). Dokument obuhvata sve API funkcije, parametre, HTTP zaglavlja, autentifikaciju, formate zahteva i odgovora, statuse grešaka i primere podataka.
+Kompletna OpenAPI 3.1 specifikacija nalazi se u fajlu [`openapi.yaml`](openapi.yaml). Dokument obuhvata sve API funkcije, parametre, HTTP zaglavlja, autentifikaciju, formate zahteva i odgovora, statuse gresaka i primere podataka.
 
-Fajl se može otvoriti direktno u [Swagger Editor-u](https://editor.swagger.io/) izborom opcije **File > Import file**.
+Laravel pomocu paketa [L5-Swagger](https://github.com/DarkaOnLine/L5-Swagger) direktno servira postojecu specifikaciju i interaktivni Swagger UI. Nije potrebno pokretati poseban Swagger Docker kontejner niti otvarati spoljni servis.
 
-Za lokalni Swagger UI pomoću Dockera, iz backend direktorijuma pokrenite:
+| Sadrzaj | Lokalna adresa | Javna adresa |
+| --- | --- | --- |
+| Swagger UI | `http://localhost:8000/api/documentation` | [fon-banking.duckdns.org/api/documentation](https://fon-banking.duckdns.org/api/documentation) |
+| OpenAPI YAML | `http://localhost:8000/docs` | [fon-banking.duckdns.org/docs](https://fon-banking.duckdns.org/docs) |
 
-```bash
-docker run --rm -p 8081:8080 \
-  -e SWAGGER_JSON=/spec/openapi.yaml \
-  -v "$PWD:/spec:ro" \
-  swaggerapi/swagger-ui
-```
+Dugme **Authorize** prihvata Sanctum token dobijen preko `/api/v1/set_pin` ili `/api/v1/login`. Unosi se samo vrednost tokena, bez prefiksa `Bearer`. Nakon autorizacije opcija **Try it out** moze direktno da salje zahteve javnom ili lokalnom API serveru izabranom u Swagger UI-ju.
 
-Dokumentacija će biti dostupna na `http://localhost:8081`. Dugme **Authorize** prihvata Sanctum token dobijen preko `/api/v1/set_pin` ili `/api/v1/login`; unosi se samo vrednost tokena, bez prefiksa `Bearer`.
+Specifikacija se po potrebi može otvoriti i u [Swagger Editor-u](https://editor.swagger.io/) izborom opcije **File > Import file**.
 
 ## Dijagram baze podataka
 
@@ -97,6 +96,8 @@ Server je zatim dostupan na:
 
 - `http://localhost:8000/up` na razvojnom racunaru;
 - `http://localhost:8000/api/v1` kao osnovni API URL;
+- `http://localhost:8000/api/documentation` kao interaktivni Swagger UI;
+- `http://localhost:8000/docs` kao OpenAPI YAML specifikacija;
 - `http://<LAN_IP_RACUNARA>:8000/api/v1` sa fizickog telefona.
 
 LAN adresu racunara mozete pronaci u mreznim podesavanjima operativnog sistema. Telefon i racunar moraju biti na istoj mrezi, a firewall mora dozvoliti dolazni saobracaj na portu 8000.
@@ -250,7 +251,11 @@ Provera dostupnosti:
 
 ```bash
 curl http://localhost:8000/up
+curl --head http://localhost:8000/api/documentation
+curl --head http://localhost:8000/docs
 ```
+
+Swagger UI je nakon pokretanja dostupan na `http://localhost:8000/api/documentation` kao deo istog backend kontejnera.
 
 Prikaz logova i zaustavljanje:
 

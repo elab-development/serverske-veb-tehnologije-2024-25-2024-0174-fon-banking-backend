@@ -23,6 +23,8 @@ info:
     url: https://github.com/Nenad005/fon-banking-backend
 
 servers:
+  - url: https://fon-banking.duckdns.org
+    description: Javno demonstraciono okruženje
   - url: http://{host}:{port}
     description: Lokalni ili LAN razvojni server
     variables:
