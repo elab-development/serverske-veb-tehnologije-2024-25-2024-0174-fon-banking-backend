@@ -1,0 +1,1534 @@
+openapi: 3.1.0
+
+info:
+  title: FON Banking REST API
+  version: 1.0.0
+  summary: REST API demonstracione aplikacije za mobilno bankarstvo.
+  description: |
+    FON Banking API podržava aktivaciju mobilnog uređaja, PIN autentifikaciju,
+    pristup računima i karticama, prenose novca, istoriju transakcija, kursnu
+    listu i posredovanje prema NBS IPS QR servisu.
+
+    API je obrazovni prototip. Transferi se izvršavaju samo između računa koji
+    postoje u lokalnoj bazi i ne predstavljaju stvarno bankarsko poravnanje.
+
+    Sve poslovne rute koriste prefiks `/api/v1` i razmenjuju JSON. Zaštićene
+    rute zahtevaju Sanctum token u zaglavlju `Authorization: Bearer <token>` i
+    korisnika čiji je status `active`.
+  contact:
+    name: FON Banking
+    url: https://github.com/Nenad005/fon-banking-backend
+  license:
+    name: Obrazovna upotreba
+    url: https://github.com/Nenad005/fon-banking-backend
+
+servers:
+  - url: http://{host}:{port}
+    description: Lokalni ili LAN razvojni server
+    variables:
+      host:
+        default: localhost
+        description: "`localhost` za isti računar ili LAN IP za fizički telefon."
+      port:
+        default: "8000"
+        description: Port Laravel ili Docker servera.
+
+tags:
+  - name: Sistem
+    description: Provera dostupnosti aplikacije.
+  - name: Autentifikacija
+    description: Aktivacija uređaja, PIN autentifikacija i upravljanje sesijom.
+  - name: Korisnik
+    description: Podaci trenutno prijavljenog korisnika.
+  - name: Računi i kartice
+    description: Bankarski proizvodi prijavljenog korisnika.
+  - name: Transakcije
+    description: Prenosi novca i istorija transakcija.
+  - name: Kursna lista
+    description: Kupovni, srednji i prodajni kursevi podržanih valuta.
+  - name: NBS IPS QR
+    description: Validacija i generisanje IPS QR sadržaja preko NBS servisa.
+
+paths:
+  /up:
+    get:
+      tags: [Sistem]
+      operationId: checkHealth
+      summary: Provera dostupnosti servera
+      description: Laravel health endpoint. Ne zahteva autentifikaciju.
+      security: []
+      responses:
+        "200":
+          description: Aplikacija je pokrenuta i dostupna.
+          content:
+            text/html:
+              schema:
+                type: string
+              example: Application up
+        "400":
+          description: Server nije mogao da obradi neispravan HTTP zahtev.
+        "503":
+          description: Aplikacija trenutno nije spremna za rad.
+
+  /api/v1/activate:
+    post:
+      tags: [Autentifikacija]
+      operationId: activateDevice
+      summary: Aktivacija mobilnog uređaja
+      security: []
+      description: |
+        Proverava jednokratni aktivacioni kod, povezuje uređaj sa korisnikom i
+        vraća kratkotrajni enrollment token za postavljanje prvog PIN-a.
+        Enrollment token je heksadecimalni niz dužine 64 znaka, podrazumevano
+        važi 600 sekundi i može se iskoristiti samo jednom.
+
+        Ruta je ograničena na pet zahteva u minuti po IP adresi.
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        description: Aktivacioni kod i identitet mobilnog uređaja.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivationRequest"
+            examples:
+              activation:
+                summary: Aktivacija demonstracionog naloga
+                value:
+                  code: LUKA-2026
+                  device_identifier: 1f6f9e20-3fd2-4cf5-9400-02bf84ef1429
+                  device_name: iPhone 17
+      responses:
+        "200":
+          description: Kod je prihvaćen i uređaj je registrovan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivationResponse"
+              example:
+                message: Kod je uspešno verifikovan. Uredjaj registrovan
+                user_status: pending_pin
+                enrollment_token: 1d65a70b4c3897c4f34eb9c5b15c371d5bc19900a3f2c55712bb679bcfe554ce
+                expires_in: 600
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/set_pin:
+    post:
+      tags: [Autentifikacija]
+      operationId: setPin
+      summary: Postavljanje prvog PIN-a
+      security: []
+      description: |
+        Troši enrollment token dobijen aktivacijom, postavlja četvorocifreni
+        PIN i aktivira nalog. Uspešan odgovor sadrži Sanctum Bearer token koji
+        se koristi za pristup svim zaštićenim rutama.
+
+        Ruta je ograničena na pet zahteva u minuti po IP adresi i po enrollment
+        tokenu.
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinRequest"
+            example:
+              enrollment_token: 1d65a70b4c3897c4f34eb9c5b15c371d5bc19900a3f2c55712bb679bcfe554ce
+              pin: "2410"
+      responses:
+        "200":
+          description: PIN je postavljen i otvorena je autentifikovana sesija.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+              example:
+                status: success
+                message: PIN je uspešno postavljen.
+                token: 1|plainTextSanctumToken
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/login:
+    post:
+      tags: [Autentifikacija]
+      operationId: login
+      summary: Prijava PIN-om
+      security: []
+      description: |
+        Prijavljuje aktivnog korisnika na prethodno aktiviranom i pouzdanom
+        uređaju. Uspešna prijava opoziva prethodni token istog uređaja i izdaje
+        novi Sanctum Bearer token.
+
+        HTTP rate limit je pet zahteva u minuti po IP adresi i uređaju. Pored
+        toga, pet uzastopnih pogrešnih PIN pokušaja zaključava prijavu za uređaj
+        na podrazumevanih 15 minuta.
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              device_identifier: 1f6f9e20-3fd2-4cf5-9400-02bf84ef1429
+              pin: "2410"
+      responses:
+        "200":
+          description: Korisnik je uspešno prijavljen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+              example:
+                status: success
+                message: Uspešna prijava.
+                token: 2|plainTextSanctumToken
+        "400":
+          description: Uređaj pripada korisniku koji još nema postavljen PIN.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+              example:
+                status: error
+                message: PIN nije postavljen. Molimo vas da prvo završite aktivaciju naloga.
+        "401":
+          description: Unet je pogrešan PIN.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+              example:
+                status: error
+                message: Pogrešan PIN kod.
+        "403":
+          description: Uređaj nije pouzdan ili korisnički nalog nije aktivan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+              examples:
+                device:
+                  value:
+                    status: error
+                    message: Uređaj nije pronađen ili nije autorizovan.
+                account:
+                  value:
+                    status: error
+                    message: Nalog nije aktivan.
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          description: Prekoračen je HTTP limit ili je uređaj zaključan posle pogrešnih pokušaja.
+          headers:
+            Retry-After:
+              description: Broj sekundi do sledećeg dozvoljenog pokušaja, kada ga odgovor sadrži.
+              schema:
+                type: integer
+                minimum: 0
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/PinLockoutResponse"
+                  - $ref: "#/components/schemas/MessageResponse"
+              example:
+                status: error
+                message: Previše neuspešnih pokušaja. Pokušajte ponovo kasnije.
+                retry_after: 900
+
+  /api/v1/user:
+    get:
+      tags: [Korisnik]
+      operationId: getCurrentUser
+      summary: Podaci prijavljenog korisnika
+      description: Vraća osnovne profilne podatke korisnika kome pripada Bearer token.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      responses:
+        "200":
+          description: Profilni podaci prijavljenog korisnika.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+              example:
+                firstName: Marko
+                lastName: Nenadović
+                email: marko@example.com
+                phoneNumber: "+381641111111"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+
+  /api/v1/accounts:
+    get:
+      tags: [Računi i kartice]
+      operationId: listAccounts
+      summary: Pregled korisnikovih računa
+      description: |
+        Vraća samo račune prijavljenog korisnika. Stanje nije sačuvano u tabeli
+        računa, već se izračunava kao zbir priliva umanjen za zbir odliva.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      responses:
+        "200":
+          description: Lista korisnikovih računa. Lista može biti prazna.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Account"
+              example:
+                - title: GLAVNI RACUN
+                  name: Tekuci dinarski racun
+                  accountId: "555102272964000028"
+                  iban: null
+                  balance: 315037.49
+                  color: magenta
+                  currency: RSD
+                  qrEligible: true
+                - title: DEVIZNI RACUN
+                  name: Tekuci devizni racun
+                  accountId: "555201456503000008"
+                  iban: RS12555201456503000008
+                  balance: 348.58
+                  color: tirquise
+                  currency: EUR
+                  qrEligible: false
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+
+  /api/v1/accounts/{accountId}/cards:
+    get:
+      tags: [Računi i kartice]
+      operationId: listAccountCards
+      summary: Kartice izabranog računa
+      description: |
+        Vraća kartice računa koji pripada prijavljenom korisniku. `accountId`
+        predstavlja domaći broj računa, a ne interni UUID. Server normalizuje
+        razmake i crtice u prosleđenoj vrednosti.
+
+        Odgovor trenutno sadrži pun broj kartice i CVV. To je ograničenje
+        demonstracionog prototipa i ne predstavlja preporučenu produkcionu praksu.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+        - name: accountId
+          in: path
+          required: true
+          description: Domaći broj računa korisnika, sa ili bez crtica.
+          schema:
+            type: string
+          example: "555-1022729640000-28"
+      responses:
+        "200":
+          description: Lista kartica povezanih sa računom.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Card"
+              example:
+                - accountId: "555102272964000028"
+                  cardId: "5355460001157428"
+                  cardType: Master
+                  expireDate: 10/28
+                  ownerName: Marko Nenadović
+                  currency: RSD
+                  cvv: "665"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/exchange-rates:
+    get:
+      tags: [Kursna lista]
+      operationId: getExchangeRates
+      summary: Kursna lista
+      description: |
+        Vraća podržane valute i kupovni, srednji i prodajni kurs prema izabranoj
+        baznoj valuti. Tržišni podaci dolaze sa Frankfurter servisa i keširaju
+        se jedan sat. Kupovni i prodajni kurs uključuju demonstracioni spread.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+        - name: base
+          in: query
+          required: false
+          description: Bazna valuta. Podrazumevana vrednost je `RSD`.
+          schema:
+            $ref: "#/components/schemas/CurrencyCode"
+          example: RSD
+      responses:
+        "200":
+          description: Kursna lista za izabranu baznu valutu.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeRateResponse"
+              example:
+                base: RSD
+                spread: 0.05
+                currencies:
+                  - code: RSD
+                    name: Srpski dinar
+                    countryCode: rs
+                  - code: EUR
+                    name: Evro
+                    countryCode: eu
+                rates:
+                  - base: RSD
+                    quote: EUR
+                    name: Evro
+                    countryCode: eu
+                    date: "2026-08-22"
+                    buy: 111.5023
+                    middle: 117.3709
+                    sell: 123.2394
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "422":
+          description: Parametar nema tri znaka ili valuta nije podržana.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - $ref: "#/components/schemas/MessageResponse"
+              examples:
+                unsupported:
+                  value:
+                    message: Unsupported base currency.
+                invalidLength:
+                  value:
+                    message: The base field must be 3 characters.
+                    errors:
+                      base:
+                        - The base field must be 3 characters.
+        "500":
+          description: Kursna lista nije mogla biti formirana, uključujući grešku spoljnog servisa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/transactions:
+    get:
+      tags: [Transakcije]
+      operationId: listTransactions
+      summary: Istorija transakcija
+      description: |
+        Vraća paginirane transakcije svih računa prijavljenog korisnika.
+        Rezultati su sortirani opadajuće po vremenu i identifikatoru.
+
+        Kada su prosleđeni `account_id` ili `card_id`, smer priliva i odliva
+        računa se iz perspektive izabranog proizvoda. Bez tih parametara smer se
+        računa iz perspektive svih korisnikovih računa, pa interni transfer
+        između dva sopstvena računa nije ni `income` ni `expense`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+        - name: page
+          in: query
+          description: Broj stranice, počev od 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: per_page
+          in: query
+          description: Broj zapisa po stranici.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 10
+        - name: search
+          in: query
+          description: Pretraga primaoca, računa, svrhe ili šifre plaćanja.
+          schema:
+            type: string
+            maxLength: 100
+          example: Komunal
+        - name: direction
+          in: query
+          description: Smer transakcije iz perspektive korisnika ili izabranog računa/kartice.
+          schema:
+            type: string
+            enum: [income, expense]
+          example: expense
+        - name: period
+          in: query
+          description: Ograničava rezultate na poslednjih 7 ili 30 dana.
+          schema:
+            type: string
+            enum: [7days, 30days]
+          example: 30days
+        - name: method
+          in: query
+          description: "`card` vraća kartične, a `pending` transakcije na čekanju."
+          schema:
+            type: string
+            enum: [card, pending]
+          example: card
+        - name: account_id
+          in: query
+          description: Domaći broj jednog od računa prijavljenog korisnika.
+          schema:
+            type: string
+          example: "555102272964000028"
+        - name: card_id
+          in: query
+          description: Broj kartice koja pripada prijavljenom korisniku.
+          schema:
+            type: string
+          example: "5355460001157428"
+      responses:
+        "200":
+          description: Paginirana istorija transakcija.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedTransactions"
+              example:
+                current_page: 1
+                data:
+                  - id: 09ef89fe-d86a-4cc4-9a49-c6f00c13e80d
+                    recipientAccount: "555102272964000028"
+                    recipientName: Marko Nenadović
+                    senderAccount: "555100915610000046"
+                    senderName: Luka Nenadović
+                    model: 97
+                    referenceNumber: null
+                    amount: 9694.23
+                    currency: RSD
+                    senderAmount: 9694.23
+                    senderCurrency: RSD
+                    recipientAmount: 9694.23
+                    recipientCurrency: RSD
+                    exchangeRate: 1
+                    paymentPurpose: Pozajmica
+                    paymentCode: "289"
+                    transactionTime: "2026-08-23T00:41:00.000000Z"
+                    status: izvrsena
+                    cardNumber: null
+                first_page_url: http://localhost:8000/api/v1/transactions?page=1
+                from: 1
+                last_page: 1
+                last_page_url: http://localhost:8000/api/v1/transactions?page=1
+                links: []
+                next_page_url: null
+                path: http://localhost:8000/api/v1/transactions
+                per_page: 20
+                prev_page_url: null
+                to: 1
+                total: 1
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/transactions/transfer:
+    post:
+      tags: [Transakcije]
+      operationId: createTransfer
+      summary: Izvršavanje prenosa novca
+      description: |
+        Kreira lokalni transfer između dva računa u FON Banking bazi. Račun
+        pošiljaoca mora pripadati prijavljenom korisniku, račun primaoca mora
+        postojati, računi moraju biti različiti, valuta zahteva mora odgovarati
+        računu pošiljaoca i pošiljalac mora imati dovoljno sredstava.
+
+        Polje `amount` predstavlja iznos koji se zadužuje sa računa pošiljaoca.
+        Kod različitih valuta server računa iznos primaoca i čuva primenjeni kurs.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        description: Podaci platnog naloga.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+            example:
+              senderAccount: "555102272964000028"
+              recipientAccount: "555100915610000046"
+              recipientName: Pera Perić
+              amount: 10000
+              currency: RSD
+              paymentPurpose: Test uplata
+              paymentCode: "289"
+              model: 97
+              referenceNumber: 12-3456-7890
+      responses:
+        "201":
+          description: Transfer je kreiran i odmah označen kao izvršen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+              example:
+                id: b07cdf9f-4ae0-4bd2-a864-1ffe6cf4174b
+                recipientAccount: "555100915610000046"
+                recipientName: Pera Perić
+                senderAccount: "555102272964000028"
+                senderName: Tekući dinarski račun
+                model: 97
+                referenceNumber: 12-3456-7890
+                amount: 10000
+                currency: RSD
+                senderAmount: 10000
+                senderCurrency: RSD
+                recipientAmount: 10000
+                recipientCurrency: RSD
+                exchangeRate: 1
+                paymentPurpose: Test uplata
+                paymentCode: "289"
+                transactionTime: "2026-08-23T00:58:19.000000Z"
+                status: izvrsena
+                cardNumber: null
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "404":
+          description: Račun pošiljaoca ne postoji ili ne pripada prijavljenom korisniku.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "422":
+          description: Neispravni parametri ili prekršeno poslovno pravilo transfera.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - $ref: "#/components/schemas/MessageResponse"
+              examples:
+                recipientMissing:
+                  value:
+                    message: Recipient account does not exist.
+                sameAccount:
+                  value:
+                    message: Sender and recipient accounts must be different.
+                wrongCurrency:
+                  value:
+                    message: Transfer currency must match the sender account currency.
+                insufficientFunds:
+                  value:
+                    message: Insufficient funds.
+                invalidAmount:
+                  value:
+                    message: The amount field must be at least 0.01.
+                    errors:
+                      amount:
+                        - The amount field must be at least 0.01.
+        "500":
+          description: Interna greška, uključujući nedostupan kursni servis tokom deviznog transfera.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/qr/validate:
+    post:
+      tags: [NBS IPS QR]
+      operationId: validateQr
+      summary: Validacija NBS IPS QR sadržaja
+      description: |
+        Prosleđuje IPS tekst zvaničnom NBS servisu za validaciju. Backend ne
+        implementira kompletnu IPS specifikaciju, već vraća normalizovan odgovor
+        spoljnog servisa.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrRequest"
+            example:
+              text: K:PR|V:01|C:1|R:845000000040484987|N:Pera Peric|I:RSD100,00|SF:289|S:Uplata
+      responses:
+        "200":
+          description: Odgovor NBS servisa sa statusom i normalizovanim IPS poljima.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NbsQrValidationResponse"
+              example:
+                s:
+                  code: 0
+                  desc: OK
+                t: K:PR|V:01|C:1|R:845000000040484987|N:Pera Peric|I:RSD100,00|SF:289|S:Uplata
+                n:
+                  K: PR
+                  V: "01"
+                  C: "1"
+                  R: "845000000040484987"
+                  N: Pera Peric
+                  I: RSD100,00
+                  SF: "289"
+                  S: Uplata
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "502":
+          $ref: "#/components/responses/NbsUnavailable"
+
+  /api/v1/qr/generate:
+    post:
+      tags: [NBS IPS QR]
+      operationId: generateQr
+      summary: Generisanje NBS IPS QR slike
+      description: |
+        Proverava da sadržaj predstavlja nalog vrste `PR`, da iznos koristi RSD
+        i da je račun validan FON Banking dinarski račun. Nakon lokalnih provera
+        šalje tekst NBS servisu i vraća Base64 kodiranu PNG sliku.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QrRequest"
+            example:
+              text: K:PR|V:01|C:1|R:555102670819000014|N:Test User|I:RSD100,00|SF:289|S:Uplata
+      responses:
+        "200":
+          description: NBS odgovor sa generisanom Base64 PNG slikom.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NbsQrGenerationResponse"
+              example:
+                s:
+                  code: 0
+                  desc: OK
+                t: K:PR|V:01|C:1|R:555102670819000014|N:Test User|I:RSD100,00|SF:289|S:Uplata
+                n:
+                  K: PR
+                  V: "01"
+                  C: "1"
+                  R: "555102670819000014"
+                  N: Test User
+                  I: RSD100,00
+                  SF: "289"
+                  S: Uplata
+                i: iVBORw0KGgoAAAANSUhEUgAA...
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "422":
+          description: Tekst nedostaje ili ne ispunjava lokalna pravila za generisanje.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - $ref: "#/components/schemas/MessageResponse"
+              examples:
+                invalidText:
+                  value:
+                    message: QR kod može da se generiše samo za validan FON Banka RSD račun.
+                missingText:
+                  value:
+                    message: The text field is required.
+                    errors:
+                      text:
+                        - The text field is required.
+        "502":
+          $ref: "#/components/responses/NbsUnavailable"
+
+  /api/v1/auth/confirm-pin:
+    post:
+      tags: [Autentifikacija]
+      operationId: confirmPin
+      summary: Dodatna potvrda PIN-a
+      description: |
+        Proverava PIN prijavljenog korisnika i izdaje kratkotrajni jednokratni
+        confirmation token vezan za korisnika i trenutni Bearer token. Token je
+        namenjen potvrdi osetljive operacije i podrazumevano važi 300 sekundi.
+
+        Ruta je ograničena na pet zahteva u minuti po korisniku i IP adresi.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmPinRequest"
+            example:
+              pin: "2410"
+      responses:
+        "200":
+          description: Identitet je potvrđen i izdat je jednokratni token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinConfirmationResponse"
+              example:
+                status: success
+                message: Identitet je potvrđen.
+                confirmation_token: c5a7ad7f90e44537a6fa03f8b6318b04
+                expires_in: 300
+        "401":
+          description: Bearer token nedostaje/nije ispravan ili je PIN pogrešan.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/MessageResponse"
+                  - $ref: "#/components/schemas/StatusMessage"
+              examples:
+                unauthenticated:
+                  value:
+                    message: Unauthenticated.
+                wrongPin:
+                  value:
+                    status: error
+                    message: Pogrešan PIN kod.
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/logout:
+    post:
+      tags: [Autentifikacija]
+      operationId: logout
+      summary: Odjava trenutne sesije
+      description: Briše samo Sanctum token poslat u trenutnom zahtevu. Uređaj ostaje aktiviran.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AcceptJson"
+      responses:
+        "200":
+          description: Trenutni pristupni token je opozvan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusMessage"
+              example:
+                status: success
+                message: Uspešno ste izlogovani.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/InactiveAccount"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Laravel Sanctum token
+      description: Token dobijen postavljanjem PIN-a ili prijavom.
+
+  parameters:
+    AcceptJson:
+      name: Accept
+      in: header
+      required: true
+      description: Zahteva da server vrati odgovor u JSON formatu.
+      schema:
+        type: string
+        const: application/json
+      example: application/json
+
+  responses:
+    Unauthenticated:
+      description: Bearer token nedostaje, istekao je ili je opozvan.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+          example:
+            message: Unauthenticated.
+    InactiveAccount:
+      description: Token pripada korisniku čiji nalog nema status `active`.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+          example:
+            message: Nalog nije aktivan.
+    ValidationError:
+      description: Zahtev nije prošao validaciju ili poslovno pravilo.
+      content:
+        application/json:
+          schema:
+            anyOf:
+              - $ref: "#/components/schemas/ValidationError"
+              - $ref: "#/components/schemas/MessageResponse"
+          examples:
+            validation:
+              value:
+                message: The given data was invalid.
+                errors:
+                  field:
+                    - The field is required.
+            businessRule:
+              value:
+                message: Zahtev nije dozvoljen.
+    TooManyRequests:
+      description: Prekoračen je limit broja zahteva.
+      headers:
+        Retry-After:
+          description: Broj sekundi do sledećeg dozvoljenog zahteva.
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        X-RateLimit-Limit:
+          description: Maksimalan broj zahteva u vremenskom prozoru.
+          required: false
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Preostali broj zahteva u trenutnom prozoru.
+          required: false
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+          example:
+            message: Too Many Attempts.
+    NotFound:
+      description: Traženi resurs ne postoji ili nije dostupan prijavljenom korisniku.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+          example:
+            message: No query results for model.
+    NbsUnavailable:
+      description: NBS servis nije dostupan ili je vratio neispravan odgovor.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MessageResponse"
+          examples:
+            unavailable:
+              value:
+                message: NBS IPS QR servis trenutno nije dostupan.
+            invalidResponse:
+              value:
+                message: NBS IPS QR servis je vratio neispravan odgovor.
+
+  schemas:
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [code, device_identifier, device_name]
+      properties:
+        code:
+          type: string
+          description: Neiskorišćen i neistekao aktivacioni kod.
+          example: LUKA-2026
+        device_identifier:
+          type: string
+          minLength: 14
+          description: Stabilni identifikator uređaja. Mora imati najmanje 14 znakova.
+          example: 1f6f9e20-3fd2-4cf5-9400-02bf84ef1429
+        device_name:
+          type: string
+          minLength: 1
+          description: Čitljiv naziv ili model mobilnog uređaja.
+          example: iPhone 17
+
+    ActivationResponse:
+      type: object
+      additionalProperties: false
+      required: [message, user_status, enrollment_token, expires_in]
+      properties:
+        message:
+          type: string
+        user_status:
+          type: string
+          const: pending_pin
+        enrollment_token:
+          type: string
+          minLength: 64
+          maxLength: 64
+          pattern: "^[a-f0-9]{64}$"
+          description: Jednokratni token za postavljanje PIN-a.
+        expires_in:
+          type: integer
+          minimum: 1
+          description: Preostalo vreme važenja tokena u sekundama.
+
+    SetPinRequest:
+      type: object
+      additionalProperties: false
+      required: [enrollment_token, pin]
+      properties:
+        enrollment_token:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: Token dobijen uspešnom aktivacijom uređaja.
+        pin:
+          $ref: "#/components/schemas/Pin"
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [device_identifier, pin]
+      properties:
+        device_identifier:
+          type: string
+          minLength: 1
+          description: Identifikator prethodno aktiviranog uređaja.
+        pin:
+          $ref: "#/components/schemas/Pin"
+
+    ConfirmPinRequest:
+      type: object
+      additionalProperties: false
+      required: [pin]
+      properties:
+        pin:
+          $ref: "#/components/schemas/Pin"
+
+    Pin:
+      type: string
+      pattern: "^[0-9]{4}$"
+      minLength: 4
+      maxLength: 4
+      writeOnly: true
+      description: Četvorocifreni PIN. Šalje se kao string da bi vodeće nule bile sačuvane.
+      example: "2410"
+
+    AuthSuccessResponse:
+      type: object
+      additionalProperties: false
+      required: [status, message, token]
+      properties:
+        status:
+          type: string
+          const: success
+        message:
+          type: string
+        token:
+          type: string
+          description: Laravel Sanctum token u formatu `id|plain-text-secret`.
+          example: 2|plainTextSanctumToken
+
+    PinConfirmationResponse:
+      type: object
+      additionalProperties: false
+      required: [status, message, confirmation_token, expires_in]
+      properties:
+        status:
+          type: string
+          const: success
+        message:
+          type: string
+        confirmation_token:
+          type: string
+          description: Kratkotrajni jednokratni token za osetljivu operaciju.
+        expires_in:
+          type: integer
+          minimum: 1
+          description: Vreme važenja u sekundama.
+
+    PinLockoutResponse:
+      type: object
+      additionalProperties: false
+      required: [status, message, retry_after]
+      properties:
+        status:
+          type: string
+          const: error
+        message:
+          type: string
+        retry_after:
+          type: integer
+          minimum: 0
+          description: Broj sekundi do novog pokušaja prijave.
+
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required: [firstName, lastName, email, phoneNumber]
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+          description: Broj telefona u međunarodnom ili lokalnom formatu.
+
+    Account:
+      type: object
+      additionalProperties: false
+      required: [title, name, accountId, iban, balance, color, currency, qrEligible]
+      properties:
+        title:
+          type: string
+          description: Kratak naslov proizvoda prikazan u aplikaciji.
+        name:
+          type: string
+          description: Naziv računa.
+        accountId:
+          type: string
+          pattern: "^[0-9]{18}$"
+          description: Domaći broj računa bez crtica.
+        iban:
+          type: [string, "null"]
+          description: IBAN računa kada postoji.
+        balance:
+          type: number
+          format: double
+          description: Izračunato stanje u valuti računa.
+        color:
+          type: string
+          description: Ključ boje koji koristi mobilni interfejs.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        qrEligible:
+          type: boolean
+          description: Da li račun ispunjava lokalne uslove za generisanje NBS IPS QR koda.
+
+    Card:
+      type: object
+      additionalProperties: false
+      required: [accountId, cardId, cardType, expireDate, ownerName, currency, cvv]
+      properties:
+        accountId:
+          type: string
+          pattern: "^[0-9]{18}$"
+          description: Domaći broj povezanog računa.
+        cardId:
+          type: string
+          description: Broj kartice. API ga trenutno vraća u punom obliku.
+        cardType:
+          type: string
+          example: Visa
+        expireDate:
+          type: string
+          description: Datum isteka; seedovani podaci koriste UTC ISO 8601 zapis, dok stariji zapisi mogu koristiti `MM/YY`.
+          example: "2028-10-04T23:45:00Z"
+        ownerName:
+          type: string
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        cvv:
+          type: string
+          pattern: "^[0-9]{3,4}$"
+          description: CVV kod. API ga trenutno vraća u punom obliku.
+
+    TransferRequest:
+      type: object
+      additionalProperties: false
+      required: [senderAccount, recipientAccount, recipientName, amount, currency]
+      properties:
+        senderAccount:
+          type: string
+          description: Domaći broj računa pošiljaoca. Server uklanja razmake i crtice.
+        recipientAccount:
+          type: string
+          description: Domaći broj postojećeg računa primaoca.
+        recipientName:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+          description: Iznos koji se zadužuje sa računa pošiljaoca.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: Mora odgovarati valuti računa pošiljaoca.
+        paymentPurpose:
+          type: [string, "null"]
+        paymentCode:
+          type: [string, "null"]
+        model:
+          type: [integer, "null"]
+        referenceNumber:
+          type: [string, "null"]
+
+    Transaction:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - recipientAccount
+        - recipientName
+        - senderAccount
+        - senderName
+        - model
+        - referenceNumber
+        - amount
+        - currency
+        - senderAmount
+        - senderCurrency
+        - recipientAmount
+        - recipientCurrency
+        - exchangeRate
+        - paymentPurpose
+        - paymentCode
+        - transactionTime
+        - status
+        - cardNumber
+      properties:
+        id:
+          type: string
+          description: UUID ili drugi jedinstveni identifikator transakcije.
+        recipientAccount:
+          type: string
+        recipientName:
+          type: string
+        senderAccount:
+          type: string
+        senderName:
+          type: string
+        model:
+          type: [integer, "null"]
+        referenceNumber:
+          type: [string, "null"]
+        amount:
+          type: number
+          format: double
+          description: Kompatibilno polje koje predstavlja iznos na strani primaoca.
+        currency:
+          type: string
+          description: Kompatibilno polje koje predstavlja valutu primaoca.
+        senderAmount:
+          type: [number, "null"]
+          format: double
+        senderCurrency:
+          type: [string, "null"]
+        recipientAmount:
+          type: [number, "null"]
+          format: double
+        recipientCurrency:
+          type: [string, "null"]
+        exchangeRate:
+          type: [number, "null"]
+          format: double
+        paymentPurpose:
+          type: [string, "null"]
+        paymentCode:
+          type: [string, "null"]
+        transactionTime:
+          type: [string, "null"]
+          format: date-time
+        status:
+          type: string
+          description: Trenutne vrednosti uključuju `izvrsena`, `realizovano` i `na_cekanju`.
+        cardNumber:
+          type: [string, "null"]
+
+    PaginatedTransactions:
+      type: object
+      additionalProperties: false
+      required:
+        - current_page
+        - data
+        - first_page_url
+        - from
+        - last_page
+        - last_page_url
+        - links
+        - next_page_url
+        - path
+        - per_page
+        - prev_page_url
+        - to
+        - total
+      properties:
+        current_page:
+          type: integer
+          minimum: 1
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        first_page_url:
+          type: string
+          format: uri
+        from:
+          type: [integer, "null"]
+        last_page:
+          type: integer
+          minimum: 1
+        last_page_url:
+          type: string
+          format: uri
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaginationLink"
+        next_page_url:
+          type: [string, "null"]
+          format: uri
+        path:
+          type: string
+          format: uri
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+        prev_page_url:
+          type: [string, "null"]
+          format: uri
+        to:
+          type: [integer, "null"]
+        total:
+          type: integer
+          minimum: 0
+
+    PaginationLink:
+      type: object
+      additionalProperties: false
+      required: [url, label, active]
+      properties:
+        url:
+          type: [string, "null"]
+          format: uri
+        label:
+          type: string
+        active:
+          type: boolean
+
+    ExchangeRateResponse:
+      type: object
+      additionalProperties: false
+      required: [base, spread, currencies, rates]
+      properties:
+        base:
+          $ref: "#/components/schemas/CurrencyCode"
+        spread:
+          type: number
+          format: double
+          minimum: 0
+          description: Relativni raspon primenjen na srednji kurs, na primer `0.05` za 5%.
+        currencies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Currency"
+        rates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExchangeRate"
+
+    Currency:
+      type: object
+      additionalProperties: false
+      required: [code, name, countryCode]
+      properties:
+        code:
+          $ref: "#/components/schemas/CurrencyCode"
+        name:
+          type: string
+        countryCode:
+          type: string
+          pattern: "^[a-z]{2}$"
+          description: Dvoslovni kod za izbor zastave u mobilnoj aplikaciji.
+
+    ExchangeRate:
+      type: object
+      additionalProperties: false
+      required: [base, quote, name, countryCode, date, buy, middle, sell]
+      properties:
+        base:
+          $ref: "#/components/schemas/CurrencyCode"
+        quote:
+          $ref: "#/components/schemas/CurrencyCode"
+        name:
+          type: string
+        countryCode:
+          type: string
+          pattern: "^[a-z]{2}$"
+        date:
+          type: string
+          format: date
+        buy:
+          type: number
+          format: double
+        middle:
+          type: number
+          format: double
+        sell:
+          type: number
+          format: double
+
+    CurrencyCode:
+      type: string
+      enum: [RSD, EUR, USD, CHF, GBP, AUD, CAD, CNY, DKK, HUF, JPY, NOK, RUB, SEK]
+
+    QrRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: NBS IPS tekst čija su polja razdvojena znakom `|`.
+
+    NbsQrValidationResponse:
+      type: object
+      required: [s, t, n]
+      properties:
+        s:
+          $ref: "#/components/schemas/NbsStatus"
+        t:
+          type: string
+          description: Originalni ili normalizovani IPS tekst.
+        n:
+          $ref: "#/components/schemas/NbsNormalizedFields"
+      additionalProperties: true
+
+    NbsQrGenerationResponse:
+      allOf:
+        - $ref: "#/components/schemas/NbsQrValidationResponse"
+        - type: object
+          required: [i]
+          properties:
+            i:
+              type: string
+              contentEncoding: base64
+              contentMediaType: image/png
+              description: Base64 kodirana PNG slika QR koda.
+
+    NbsStatus:
+      type: object
+      required: [code, desc]
+      properties:
+        code:
+          type: integer
+          description: NBS statusni kod. Vrednost 0 označava uspeh.
+        desc:
+          type: string
+      additionalProperties: true
+
+    NbsNormalizedFields:
+      type: object
+      description: Normalizovana IPS polja. Skup ključeva zavisi od sadržaja naloga.
+      additionalProperties:
+        type: string
+      properties:
+        K:
+          type: string
+          description: Vrsta naloga, očekivano `PR`.
+        V:
+          type: string
+        C:
+          type: string
+        R:
+          type: string
+          description: Račun primaoca.
+        N:
+          type: string
+          description: Naziv primaoca.
+        I:
+          type: string
+          description: Valuta i iznos, na primer `RSD100,00`.
+        SF:
+          type: string
+          description: Šifra plaćanja.
+        S:
+          type: string
+          description: Svrha plaćanja.
+        RO:
+          type: string
+          description: Model i poziv na broj.
+
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+      additionalProperties: true
+
+    StatusMessage:
+      type: object
+      additionalProperties: false
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [success, error]
+        message:
+          type: string
+
+    ValidationError:
+      type: object
+      additionalProperties: false
+      required: [message, errors]
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string

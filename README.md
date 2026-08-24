@@ -20,6 +20,23 @@ Klijentska aplikacija: [fon-banking-frontend](https://github.com/Nenad005/fon-ba
 
 API rute koriste prefiks `/api/v1`. Provera dostupnosti servera nalazi se na `/up`.
 
+## REST API dokumentacija
+
+Kompletna OpenAPI 3.1 specifikacija nalazi se u fajlu [`openapi.yaml`](openapi.yaml). Dokument obuhvata sve API funkcije, parametre, HTTP zaglavlja, autentifikaciju, formate zahteva i odgovora, statuse grešaka i primere podataka.
+
+Fajl se može otvoriti direktno u [Swagger Editor-u](https://editor.swagger.io/) izborom opcije **File > Import file**.
+
+Za lokalni Swagger UI pomoću Dockera, iz backend direktorijuma pokrenite:
+
+```bash
+docker run --rm -p 8081:8080 \
+  -e SWAGGER_JSON=/spec/openapi.yaml \
+  -v "$PWD:/spec:ro" \
+  swaggerapi/swagger-ui
+```
+
+Dokumentacija će biti dostupna na `http://localhost:8081`. Dugme **Authorize** prihvata Sanctum token dobijen preko `/api/v1/set_pin` ili `/api/v1/login`; unosi se samo vrednost tokena, bez prefiksa `Bearer`.
+
 ## Potrebni alati
 
 Za lokalno pokretanje bez Dockera potrebni su:
