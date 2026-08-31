@@ -6,7 +6,6 @@ use App\Models\ActivationCode;
 use App\Models\Device;
 use App\Models\PinEnrollmentToken;
 use App\Services\DeviceTokenIssuer;
-use App\Services\PinConfirmationGrant;
 use App\Services\PinLoginLockout;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -14,7 +13,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
@@ -270,7 +268,7 @@ class AuthController extends Controller
         ], Response::HTTP_TOO_MANY_REQUESTS);
     }
 
-    public function confirmPin(Request $request, PinConfirmationGrant $grants): JsonResponse
+    public function confirmPin(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'pin' => 'required|digits:4',
@@ -283,23 +281,9 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $accessToken = $request->user()->currentAccessToken();
-
-        if (! $accessToken instanceof PersonalAccessToken) {
-            abort(Response::HTTP_UNAUTHORIZED);
-        }
-
-        $grant = $grants->issue(
-            $request->user()->getKey(),
-            $accessToken->getKey(),
-            'sensitive-action',
-        );
-
         return response()->json([
             'status' => 'success',
             'message' => 'Identitet je potvrđen.',
-            'confirmation_token' => $grant['token'],
-            'expires_in' => $grant['expires_in'],
         ]);
     }
 

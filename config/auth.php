@@ -119,10 +119,6 @@ return [
         'decay_seconds' => env('PIN_LOGIN_DECAY_SECONDS', 900),
     ],
 
-    'pin_confirmation' => [
-        'ttl' => env('PIN_CONFIRMATION_TTL', 300),
-    ],
-
     'pin_enrollment' => [
         'ttl' => env('PIN_ENROLLMENT_TTL', 600),
     ],

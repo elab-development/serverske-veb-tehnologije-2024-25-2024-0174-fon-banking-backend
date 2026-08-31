@@ -787,9 +787,8 @@ paths:
       operationId: confirmPin
       summary: Dodatna potvrda PIN-a
       description: |
-        Proverava PIN prijavljenog korisnika i izdaje kratkotrajni jednokratni
-        confirmation token vezan za korisnika i trenutni Bearer token. Token je
-        namenjen potvrdi osetljive operacije i podrazumevano važi 300 sekundi.
+        Proverava PIN prijavljenog korisnika pre nego što frontend nastavi
+        osetljivu operaciju.
 
         Ruta je ograničena na pet zahteva u minuti po korisniku i IP adresi.
       security:
@@ -806,7 +805,7 @@ paths:
               pin: "2410"
       responses:
         "200":
-          description: Identitet je potvrđen i izdat je jednokratni token.
+          description: Identitet je potvrđen.
           content:
             application/json:
               schema:
@@ -814,8 +813,6 @@ paths:
               example:
                 status: success
                 message: Identitet je potvrđen.
-                confirmation_token: c5a7ad7f90e44537a6fa03f8b6318b04
-                expires_in: 300
         "401":
           description: Bearer token nedostaje/nije ispravan ili je PIN pogrešan.
           content:
@@ -1067,20 +1064,13 @@ components:
     PinConfirmationResponse:
       type: object
       additionalProperties: false
-      required: [status, message, confirmation_token, expires_in]
+      required: [status, message]
       properties:
         status:
           type: string
           const: success
         message:
           type: string
-        confirmation_token:
-          type: string
-          description: Kratkotrajni jednokratni token za osetljivu operaciju.
-        expires_in:
-          type: integer
-          minimum: 1
-          description: Vreme važenja u sekundama.
 
     PinLockoutResponse:
       type: object
