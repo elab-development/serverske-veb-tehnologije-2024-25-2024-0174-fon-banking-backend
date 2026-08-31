@@ -62,17 +62,19 @@ class Account extends Model
 
     private function incomingAmount(Transaction $transaction): float
     {
-        $amount = $transaction->recipient_amount ?? $transaction->amount;
-        $currency = $transaction->recipient_currency ?? $transaction->currency;
-
-        return app(ExchangeRateService::class)->convertAtMarket((float) $amount, $currency, $this->currency);
+        return app(ExchangeRateService::class)->convertAtMarket(
+            $transaction->recipient_amount,
+            $transaction->recipient_currency,
+            $this->currency,
+        );
     }
 
     private function outgoingAmount(Transaction $transaction): float
     {
-        $amount = $transaction->sender_amount ?? $transaction->amount;
-        $currency = $transaction->sender_currency ?? $transaction->currency;
-
-        return app(ExchangeRateService::class)->convertAtMarket((float) $amount, $currency, $this->currency);
+        return app(ExchangeRateService::class)->convertAtMarket(
+            $transaction->sender_amount,
+            $transaction->sender_currency,
+            $this->currency,
+        );
     }
 }

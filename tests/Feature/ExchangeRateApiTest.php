@@ -81,8 +81,6 @@ class ExchangeRateApiTest extends TestCase
             'recipient_account_id' => $senderAccount->id,
             'recipient_name' => 'Sender',
             'sender_account_id' => $recipientAccount->id,
-            'amount' => 50000,
-            'currency' => 'RSD',
             'recipient_amount' => 50000,
             'recipient_currency' => 'RSD',
             'sender_amount' => 0,

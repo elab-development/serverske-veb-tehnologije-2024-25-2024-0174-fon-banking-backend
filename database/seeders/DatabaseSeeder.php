@@ -486,8 +486,6 @@ class DatabaseSeeder extends Seeder
             'sender_account_id' => $senderAccount->id,
             'model' => $model,
             'reference_number' => $referenceNumber,
-            'amount' => $recipientAmount,
-            'currency' => $recipientAccount->currency,
             'sender_amount' => $senderAmount,
             'sender_currency' => $senderAccount->currency,
             'recipient_amount' => $recipientAmount,

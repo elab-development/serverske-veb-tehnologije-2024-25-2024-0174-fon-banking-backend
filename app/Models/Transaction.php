@@ -14,8 +14,6 @@ class Transaction extends Model
         'sender_account_id',
         'model',
         'reference_number',
-        'amount',
-        'currency',
         'sender_amount',
         'sender_currency',
         'recipient_amount',
@@ -35,7 +33,6 @@ class Transaction extends Model
     protected function casts(): array
     {
         return [
-            'amount' => 'float',
             'sender_amount' => 'float',
             'recipient_amount' => 'float',
             'exchange_rate' => 'float',

@@ -531,8 +531,6 @@ paths:
                     senderName: Luka Nenadović
                     model: 97
                     referenceNumber: null
-                    amount: 9694.23
-                    currency: RSD
                     senderAmount: 9694.23
                     senderCurrency: RSD
                     recipientAmount: 9694.23
@@ -610,8 +608,6 @@ paths:
                 senderName: Tekući dinarski račun
                 model: 97
                 referenceNumber: 12-3456-7890
-                amount: 10000
-                currency: RSD
                 senderAmount: 10000
                 senderCurrency: RSD
                 recipientAmount: 10000
@@ -1224,8 +1220,6 @@ components:
         - senderName
         - model
         - referenceNumber
-        - amount
-        - currency
         - senderAmount
         - senderCurrency
         - recipientAmount
@@ -1252,23 +1246,16 @@ components:
           type: [integer, "null"]
         referenceNumber:
           type: [string, "null"]
-        amount:
+        senderAmount:
           type: number
           format: double
-          description: Kompatibilno polje koje predstavlja iznos na strani primaoca.
-        currency:
-          type: string
-          description: Kompatibilno polje koje predstavlja valutu primaoca.
-        senderAmount:
-          type: [number, "null"]
-          format: double
         senderCurrency:
-          type: [string, "null"]
+          type: string
         recipientAmount:
-          type: [number, "null"]
+          type: number
           format: double
         recipientCurrency:
-          type: [string, "null"]
+          type: string
         exchangeRate:
           type: [number, "null"]
           format: double
